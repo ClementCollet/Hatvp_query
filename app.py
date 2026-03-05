@@ -84,13 +84,48 @@ def find_csv_in_zip(csv_names, keywords):
     candidates = [n for n in csv_names if all(k in n.lower() for k in kw_low)]
     return max(candidates, key=len) if candidates else None
 
+def _nc(c):
+    """Normalise un nom de colonne brut (même logique que normalize_cols)."""
+    return c.strip().lower().replace(" ", "_").strip('"').strip("'")
+
+def _col_filter(fixed=(), patterns=()):
+    """Retourne un callable usecols qui filtre sur noms normalisés."""
+    fixed_set = set(fixed)
+    def keep(c):
+        nc = _nc(c)
+        return nc in fixed_set or any(p in nc for p in patterns)
+    return keep
+
+TABLE_COLS = {
+    "secteurs":       _col_filter({"secteur_activite", "representants_id"}),
+    "infos":          _col_filter({"representants_id", "denomination", "nom_usage_hatvp",
+                                   "sigle_hatvp", "label_categorie_organisation", "adresse",
+                                   "code_postal", "ville", "pays", "site_web", "page_linkedin",
+                                   "page_twitter", "date_premiere_publication",
+                                   "identifiant_national", "type_identifiant_national"}),
+    "objets":         _col_filter({"objet_activite", "exercices_id", "activite_id",
+                                   "identifiant_fiche"}),
+    "exercices":      _col_filter({"exercices_id", "representants_id",
+                                   "annee_debut", "annee_fin"}),
+    "dirigeants":     _col_filter({"representants_id", "civilite_dirigeant", "nom_dirigeant",
+                                   "prenom_dirigeant", "fonction_dirigeant",
+                                   "nom_prenom_dirigeant"}),
+    "collaborateurs": _col_filter({"representants_id", "civilite_collaborateur",
+                                   "nom_collaborateur", "prenom_collaborateur",
+                                   "fonction_collaborateur", "nom_prenom_collaborateur"}),
+    "ari":            _col_filter({"activite_id", "action_representation_interet_id"}),
+    "actions":        _col_filter({"action_representation_interet_id"}, ("action_menee",)),
+    "ministeres":     _col_filter({"action_representation_interet_id"}, ("responsable_public",)),
+    "domaines":       _col_filter({"activite_id"}, ("domaine",)),
+}
+
 # ─── UTILITAIRES ──────────────────────────────────────────────────────────────
 
 def normalize_cols(df):
-    df.columns = [c.strip().lower().replace(" ", "_").strip('"').strip("'") for c in df.columns]
+    df.columns = [_nc(c) for c in df.columns]
     return df
 
-def read_csv_bytes(raw_bytes):
+def read_csv_bytes(raw_bytes, usecols=None):
     if raw_bytes[:2] == b"\x1f\x8b":
         with gzip.open(io.BytesIO(raw_bytes)) as f:
             raw_bytes = f.read()
@@ -105,7 +140,8 @@ def read_csv_bytes(raw_bytes):
     sep = ";" if first_line.count(";") >= first_line.count(",") else ","
     for s in [sep, ("," if sep == ";" else ";")]:
         try:
-            df = pd.read_csv(io.StringIO(text), sep=s, low_memory=False, on_bad_lines="skip")
+            df = pd.read_csv(io.StringIO(text), sep=s, low_memory=False,
+                             on_bad_lines="skip", usecols=usecols)
             if len(df.columns) > 1:
                 return normalize_cols(df)
         except Exception:
@@ -137,7 +173,7 @@ def generate_variants(keyword):
 
 # ─── CHARGEMENT DONNÉES ───────────────────────────────────────────────────────
 
-@st.cache_data(show_spinner=False, ttl=3600 * 12)
+@st.cache_resource(show_spinner=False)
 def load_all_tables():
     CACHE_DIR.mkdir(exist_ok=True)
     zip_cache = CACHE_DIR / "vues_separees.zip"
@@ -147,15 +183,14 @@ def load_all_tables():
         with open(zip_cache, "wb") as f:
             for chunk in resp.iter_content(65536):
                 f.write(chunk)
-    zip_bytes = zip_cache.read_bytes()
     tables = {}
-    with zipfile.ZipFile(io.BytesIO(zip_bytes)) as z:
+    with zipfile.ZipFile(zip_cache) as z:
         names = z.namelist()
         csv_names = [n for n in names if n.lower().endswith(".csv")]
         for key, keywords in TABLE_KEYWORDS.items():
             match = find_csv_in_zip(csv_names, keywords)
             if match:
-                tables[key] = read_csv_bytes(z.read(match))
+                tables[key] = read_csv_bytes(z.read(match), usecols=TABLE_COLS.get(key))
     return tables
 
 # ─── MATCHING ─────────────────────────────────────────────────────────────────
