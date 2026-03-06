@@ -45,6 +45,8 @@ h2, h3 { font-family: 'Syne', sans-serif !important; font-weight: 700 !important
 .mode-badge { display: inline-block; padding: 4px 12px; border-radius: 20px; font-family: 'DM Mono', monospace; font-size: 12px; font-weight: 500; margin-bottom: 8px; }
 .mode-objets { background: #1e3a5f; color: #7dd3fc; border: 1px solid #2563eb55; }
 .mode-secteurs { background: #2d1f4e; color: #c4b5fd; border: 1px solid #7c3aed55; }
+.mode-orgs { background: #1a3a2a; color: #6ee7b7; border: 1px solid #05966955; }
+.mode-personnes { background: #3a2020; color: #fca5a5; border: 1px solid #dc262655; }
 .sector-pill { display: inline-block; background: #1a2035; border: 1px solid #2a3550; border-radius: 20px; padding: 5px 14px; margin: 4px; font-family: 'DM Mono', monospace; font-size: 12px; color: #93b4d8; }
 .stButton > button { background: linear-gradient(135deg, #1d4ed8, #2563eb) !important; color: white !important; border: none !important; border-radius: 8px !important; font-family: 'Syne', sans-serif !important; font-weight: 600 !important; }
 .stDownloadButton > button { background: linear-gradient(135deg, #065f46, #047857) !important; color: white !important; border: none !important; border-radius: 8px !important; font-family: 'Syne', sans-serif !important; font-weight: 600 !important; }
@@ -236,6 +238,45 @@ def search_objets(keyword, df_objets, exact=False):
             lambda s: any(kw in normalize(s) for kw in kw_norms))
     return df_objets.loc[mask.index[mask]]
 
+def search_organisations(keyword, df_infos, exact=False):
+    search_cols = [c for c in ["denomination", "nom_usage_hatvp", "sigle_hatvp"]
+                   if c in df_infos.columns]
+    if exact:
+        kw_norm = normalize(keyword.strip())
+        def _match(s): return _word_boundary_match(kw_norm, normalize(str(s)))
+    else:
+        kw_norms = list(set(normalize(v) for v in generate_variants(keyword)))
+        def _match(s): return any(kw in normalize(str(s)) for kw in kw_norms)
+    mask = df_infos[search_cols].apply(
+        lambda col: col.fillna("").apply(_match)
+    ).any(axis=1)
+    return df_infos.loc[mask]
+
+def search_personnes(keyword, df_dirigeants, df_collaborateurs, exact=False):
+    if exact:
+        kw_norm = normalize(keyword.strip())
+        def _match(s): return _word_boundary_match(kw_norm, normalize(str(s)))
+    else:
+        kw_norms = list(set(normalize(v) for v in generate_variants(keyword)))
+        def _match(s): return any(kw in normalize(str(s)) for kw in kw_norms)
+    frames = []
+    for df_src, statut, name_cols in [
+        (df_dirigeants, "Dirigeant",
+         ["nom_dirigeant", "prenom_dirigeant", "nom_prenom_dirigeant"]),
+        (df_collaborateurs, "Collaborateur",
+         ["nom_collaborateur", "prenom_collaborateur", "nom_prenom_collaborateur"]),
+    ]:
+        if df_src.empty: continue
+        cols = [c for c in name_cols if c in df_src.columns]
+        if not cols: continue
+        mask = df_src[cols].apply(lambda col: col.fillna("").apply(_match)).any(axis=1)
+        matched = df_src.loc[mask].copy()
+        matched["_statut_match"] = statut
+        frames.append(matched)
+    if not frames:
+        return pd.DataFrame()
+    return pd.concat(frames, ignore_index=True)
+
 # ─── ENRICHISSEMENT ───────────────────────────────────────────────────────────
 
 COL_ARI_ID_APP = "action_representation_interet_id"
@@ -418,9 +459,19 @@ with st.sidebar:
         placeholder="ex : taxe carbone, CVAE, MiCA, énergie...",
         help="Les accents et la casse sont ignorés.")
     mode = st.radio("Mode de recherche",
-        ["Objets d'activité", "Secteurs d'activité"], index=0,
-        help="**Objets** : full-text dans ~95 000 descriptions. **Secteurs** : 31 catégories.")
-    mode_key = "objets" if mode == "Objets d'activité" else "secteurs"
+        ["Objets d'activité", "Secteurs d'activité", "Organisations", "Personnes"], index=0,
+        help=(
+            "**Objets** : full-text dans ~95 000 descriptions. "
+            "**Secteurs** : 31 catégories. "
+            "**Organisations** : nom, sigle. "
+            "**Personnes** : nom/prénom des dirigeants et collaborateurs."
+        ))
+    mode_key = {
+        "Objets d'activité":  "objets",
+        "Secteurs d'activité": "secteurs",
+        "Organisations":       "organisations",
+        "Personnes":           "personnes",
+    }[mode]
 
     st.markdown("#### 🎯 Précision du matching")
     matching_mode = st.radio(
@@ -461,7 +512,7 @@ with st.expander("📖 Comment utiliser cet outil ?", expanded=not keyword):
         st.markdown("""
 <div class="doc-card">
 <h4>🔎 Mode Objets d'activité <span style="color:#7dd3fc;font-size:11px;">(défaut · recommandé)</span></h4>
-<p>Recherche full-text dans les ~95 000 descriptions libres des actions de lobbying.<br><br>
+<p>Recherche full-text dans les ~95 000 descriptions libres des actions de lobbying déclarées.<br><br>
 <strong>Exemples :</strong><br>
 → <code>taxe carbone</code> · <code>CVAE</code> · <code>MiCA</code><br>
 → <code>réforme des retraites</code> · <code>loi APER</code><br>
@@ -470,24 +521,48 @@ with st.expander("📖 Comment utiliser cet outil ?", expanded=not keyword):
         st.markdown("""
 <div class="doc-card">
 <h4>📂 Mode Secteurs d'activité</h4>
-<p>Recherche dans les 31 secteurs prédéfinis déclarés par chaque représentant.<br><br>
+<p>Recherche dans les 31 secteurs prédéfinis déclarés par chaque représentant.<br>
+Retourne toutes les organisations actives dans ce secteur, avec l'ensemble de leurs actions.<br><br>
 <strong>Exemples :</strong><br>
 → <code>Energie</code> · <code>Santé</code> · <code>Numérique</code><br>
 → <code>Agriculture</code> · <code>Transports</code> · <code>Finance</code>
+</p></div>""", unsafe_allow_html=True)
+        st.markdown("""
+<div class="doc-card">
+<h4>🏢 Mode Organisations</h4>
+<p>Recherche par nom, nom d'usage ou sigle dans le registre des représentants.<br>
+Retourne les organisations dont le nom correspond, avec l'ensemble de leurs actions déclarées.<br><br>
+<strong>Exemples :</strong><br>
+→ <code>Total</code> · <code>BNP</code> · <code>MEDEF</code><br>
+→ <code>France Assureurs</code> · <code>FNSEA</code>
+</p></div>""", unsafe_allow_html=True)
+        st.markdown("""
+<div class="doc-card">
+<h4>👤 Mode Personnes</h4>
+<p>Recherche par nom ou prénom parmi les dirigeants et collaborateurs déclarés.<br>
+<strong style="color:#fca5a5;">Nuance importante :</strong> l'onglet Personnes de l'export ne contient
+que les personnes ayant effectivement matché — pas tous les membres des organisations trouvées.<br>
+Les onglets Actions et Organisations couvrent en revanche toutes les activités de ces organisations.<br><br>
+<strong>Exemples :</strong><br>
+→ <code>Dupont</code> · <code>Jean Martin</code>
 </p></div>""", unsafe_allow_html=True)
     with c2:
         st.markdown("""
 <div class="doc-card">
 <h4>📋 Structure de l'export Excel (3 onglets)</h4>
 <p>
-<strong style="color:#e2e8f0;">Onglet 1 — Actions de lobbying</strong><br>
-→ 1 ligne par action · objet · période concernée<br>
+Quel que soit le mode de recherche, l'export suit toujours la même structure :<br><br>
+<strong style="color:#7dd3fc;">Onglet 1 — Actions de lobbying</strong><br>
+→ 1 ligne par action déclarée par les organisations matchées<br>
+→ Objet de l'action · période concernée<br>
 → Types d'actions menées · Responsables publics contactés<br>
 → Domaines d'intervention<br><br>
-<strong style="color:#e2e8f0;">Onglet 2 — Organisations</strong><br>
-→ 1 ligne par organisation · toutes les infos<br><br>
-<strong style="color:#e2e8f0;">Onglet 3 — Dirigeants & Collaborateurs</strong><br>
-→ 1 ligne par personne · statut · fonction · organisation
+<strong style="color:#6ee7b7;">Onglet 2 — Organisations</strong><br>
+→ 1 ligne par organisation matchée<br>
+→ Coordonnées · catégorie · identifiants · récapitulatif des actions<br><br>
+<strong style="color:#fca5a5;">Onglet 3 — Dirigeants & Collaborateurs</strong><br>
+→ 1 ligne par personne associée aux organisations matchées<br>
+→ <em>En mode Personnes :</em> uniquement les personnes ayant matché
 </p></div>""", unsafe_allow_html=True)
         st.markdown("""
 <div class="doc-card">
@@ -500,13 +575,14 @@ with st.expander("📖 Comment utiliser cet outil ?", expanded=not keyword):
 <strong style="color:#e2e8f0;">Exact</strong> — mot entier uniquement (frontières de mots)<br>
 → <code>seb</code> trouve <em>SEB SA</em>, <em>groupe SEB</em> mais pas <em>Sebastian</em><br>
 → <code>loi</code> trouve <em>la loi</em>, <em>cette loi,</em> mais pas <em>lobbying</em><br>
-→ Idéal pour rechercher un nom propre, un sigle ou un acronyme
+→ Idéal pour un nom propre, un sigle ou un acronyme
 </p></div>
 <div class="doc-card">
 <h4>⚡ Conseils</h4>
 <p>
-→ Les <strong style="color:#e2e8f0;">accents et la casse</strong> sont ignorés dans les deux modes<br>
+→ Les <strong style="color:#e2e8f0;">accents et la casse</strong> sont ignorés dans tous les modes<br>
 → En mode Objets, préférez des <strong style="color:#e2e8f0;">termes précis</strong><br>
+→ En mode Personnes, le mode <strong style="color:#e2e8f0;">Exact</strong> est recommandé pour éviter les faux positifs sur les noms<br>
 → La <strong style="color:#e2e8f0;">période</strong> correspond à l'exercice déclaratif
 (ex: 01/04/2024 – 31/03/2025), pas à la date de publication<br>
 → Source : <a href="https://www.hatvp.fr/le-repertoire/" target="_blank"
@@ -569,14 +645,19 @@ if not keyword:
 
 # ─── RECHERCHE ────────────────────────────────────────────────────────────────
 
-badge_class = "mode-objets" if mode_key == "objets" else "mode-secteurs"
+badge_class = {
+    "objets": "mode-objets", "secteurs": "mode-secteurs",
+    "organisations": "mode-orgs", "personnes": "mode-personnes",
+}.get(mode_key, "mode-objets")
 st.markdown(
     f'<span class="mode-badge {badge_class}">Mode : {mode}</span>',
     unsafe_allow_html=True)
 st.markdown(f"### Résultats pour **« {keyword} »**")
 
-ids_retenus     = []
-df_objets_match = pd.DataFrame()
+ids_retenus        = []
+df_objets_match    = pd.DataFrame()
+_dirigeants_for_s3    = df_dirigeants
+_collaborateurs_for_s3 = df_collaborateurs
 
 # ── Mode OBJETS ───────────────────────────────────────────────────────────────
 if mode_key == "objets":
@@ -606,7 +687,7 @@ if mode_key == "objets":
                 unsafe_allow_html=True)
 
 # ── Mode SECTEURS ─────────────────────────────────────────────────────────────
-else:
+elif mode_key == "secteurs":
     groups = search_secteurs(keyword, df_secteurs, exact=exact_match)
     if not groups:
         st.warning(f"Aucun secteur ne correspond à « {keyword} ».")
@@ -634,6 +715,73 @@ else:
   <span style='font-family:DM Mono,monospace;color:#8899bb;font-size:13px;margin-left:8px;'>organisations</span>
 </div>""", unsafe_allow_html=True)
 
+# ── Mode ORGANISATIONS ────────────────────────────────────────────────────────
+elif mode_key == "organisations":
+    df_orgs_match = search_organisations(keyword, df_infos, exact=exact_match)
+    if df_orgs_match.empty:
+        st.warning(f"Aucune organisation ne correspond à « {keyword} ».")
+        st.stop()
+    ids_retenus = df_orgs_match[COL_REP_ID].dropna().unique().tolist()
+    exo_ids = df_exercices[df_exercices[COL_REP_ID].isin(ids_retenus)][COL_EXO_ID].unique()
+    df_objets_match = df_objets[df_objets[COL_EXO_ID].isin(exo_ids)]
+
+    st.markdown(f"""
+<div style='background:#1a3a2a22;border:1px solid #05966944;border-radius:10px;padding:16px 20px;margin:12px 0;'>
+  <span style='font-family:Syne,sans-serif;font-size:24px;font-weight:800;color:#6ee7b7;'>{len(ids_retenus):,}</span>
+  <span style='font-family:DM Mono,monospace;color:#8899bb;font-size:13px;margin-left:8px;'>organisations trouvées</span>
+  &nbsp;·&nbsp;
+  <span style='font-family:Syne,sans-serif;font-size:24px;font-weight:800;color:#e8c97a;'>{len(df_objets_match):,}</span>
+  <span style='font-family:DM Mono,monospace;color:#8899bb;font-size:13px;margin-left:8px;'>actions associées</span>
+</div>""", unsafe_allow_html=True)
+
+    with st.expander(f"🏢 Aperçu des {min(10, len(df_orgs_match))} premières organisations matchées"):
+        for _, row in df_orgs_match.head(10).iterrows():
+            nom = str(row.get(COL_DENOM, "")) or str(row.get("nom_usage_hatvp", ""))
+            st.markdown(
+                f"<div style='font-family:DM Mono,monospace;font-size:12px;color:#6ee7b7;"
+                f"padding:8px 12px;border-left:2px solid #05966944;margin-bottom:6px;'>{nom}</div>",
+                unsafe_allow_html=True)
+
+# ── Mode PERSONNES ────────────────────────────────────────────────────────────
+elif mode_key == "personnes":
+    df_pers_match = search_personnes(keyword, df_dirigeants, df_collaborateurs, exact=exact_match)
+    if df_pers_match.empty:
+        st.warning(f"Aucune personne ne correspond à « {keyword} ».")
+        st.stop()
+    ids_retenus = df_pers_match[COL_REP_ID].dropna().unique().tolist()
+    exo_ids = df_exercices[df_exercices[COL_REP_ID].isin(ids_retenus)][COL_EXO_ID].unique()
+    df_objets_match = df_objets[df_objets[COL_EXO_ID].isin(exo_ids)]
+    # Restreindre la table personnes aux seules personnes matchées
+    _dirigeants_for_s3 = (df_pers_match[df_pers_match["_statut_match"] == "Dirigeant"]
+                          .drop(columns=["_statut_match"]))
+    _collaborateurs_for_s3 = (df_pers_match[df_pers_match["_statut_match"] == "Collaborateur"]
+                               .drop(columns=["_statut_match"]))
+
+    nb_pers = len(df_pers_match)
+    st.markdown(f"""
+<div style='background:#3a202022;border:1px solid #dc262644;border-radius:10px;padding:16px 20px;margin:12px 0;'>
+  <span style='font-family:Syne,sans-serif;font-size:24px;font-weight:800;color:#fca5a5;'>{nb_pers:,}</span>
+  <span style='font-family:DM Mono,monospace;color:#8899bb;font-size:13px;margin-left:8px;'>personnes trouvées</span>
+  &nbsp;·&nbsp;
+  <span style='font-family:Syne,sans-serif;font-size:24px;font-weight:800;color:#6ee7b7;'>{len(ids_retenus):,}</span>
+  <span style='font-family:DM Mono,monospace;color:#8899bb;font-size:13px;margin-left:8px;'>organisations</span>
+  &nbsp;·&nbsp;
+  <span style='font-family:Syne,sans-serif;font-size:24px;font-weight:800;color:#e8c97a;'>{len(df_objets_match):,}</span>
+  <span style='font-family:DM Mono,monospace;color:#8899bb;font-size:13px;margin-left:8px;'>actions associées</span>
+</div>""", unsafe_allow_html=True)
+
+    with st.expander(f"👤 Aperçu des {min(10, nb_pers)} premières personnes matchées"):
+        for _, row in df_pers_match.head(10).iterrows():
+            nom_col = next((c for c in ["nom_prenom_dirigeant", "nom_prenom_collaborateur",
+                                        "nom_dirigeant", "nom_collaborateur"] if c in row.index), None)
+            nom = str(row[nom_col]) if nom_col else ""
+            statut = row.get("_statut_match", "")
+            st.markdown(
+                f"<div style='font-family:DM Mono,monospace;font-size:12px;color:#fca5a5;"
+                f"padding:8px 12px;border-left:2px solid #dc262644;margin-bottom:6px;'>"
+                f"<span style='color:#556688;'>{statut}</span> — {nom}</div>",
+                unsafe_allow_html=True)
+
 # ─── ENRICHISSEMENT ───────────────────────────────────────────────────────────
 
 if df_objets_match.empty:
@@ -651,7 +799,7 @@ with st.spinner("🔀 Enrichissement des actions (période, types, responsables)
 
 df_s1 = build_actions_sheet(df_enriched, df_infos)
 df_s2 = build_orgs_sheet(ids_retenus, df_infos, df_enriched)
-df_s3 = build_persons_sheet(ids_retenus, df_s2, df_dirigeants, df_collaborateurs)
+df_s3 = build_persons_sheet(ids_retenus, df_s2, _dirigeants_for_s3, _collaborateurs_for_s3)
 
 # ─── AFFICHAGE ONGLETS ────────────────────────────────────────────────────────
 
