@@ -32,7 +32,8 @@ st.markdown("""
 @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&display=swap');
 html, body, [class*="css"] { font-family: 'Syne', sans-serif; }
 .stApp { background-color: #0d1b35; }
-[data-testid="stSidebar"] { background-color: #122040; border-right: 1px solid #1e3560; }
+[data-testid="stSidebar"] { background-color: #122040; border-right: 1px solid #1e3560; min-width: 340px !important; max-width: 340px !important; }
+[data-testid="stSidebar"] > div:first-child { width: 360px !important; }
 h1 { font-family: 'Syne', sans-serif !important; font-weight: 800 !important; letter-spacing: -1px !important; }
 h2, h3 { font-family: 'Syne', sans-serif !important; font-weight: 700 !important; }
 .doc-card { background: linear-gradient(135deg, #122040 0%, #1a2e58 100%); border: 1px solid #2d4480; border-radius: 12px; padding: 20px 24px; margin-bottom: 14px; }
