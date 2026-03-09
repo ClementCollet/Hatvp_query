@@ -609,7 +609,6 @@ with st.sidebar:
     st.divider()
     st.markdown("### ⚙️ Options")
     max_preview = st.slider("Lignes à afficher", 5, 50, 15)
-    show_all_cols = st.checkbox("Toutes les colonnes", value=False)
     st.divider()
     with st.popover("💬 Donner un feedback", use_container_width=True):
         st.markdown("##### Envoyer un retour")
@@ -1049,46 +1048,35 @@ RENAME = {
     "prenom": "Prénom", "fonction": "Fonction", "nom_prenom": "Nom complet",
 }
 
-def show_tab(df, default_cols, label):
+def show_tab(df, label):
     if df is None or df.empty:
         st.info(f"Aucune donnée {label}.")
         return
-    display_cols = list(df.columns) if show_all_cols else [c for c in default_cols if c in df.columns]
-    df_disp = df[display_cols].head(max_preview).reset_index(drop=True)
+    df_disp = df.head(max_preview).reset_index(drop=True)
     df_disp = df_disp.rename(columns={k: v for k, v in RENAME.items() if k in df_disp.columns})
     st.dataframe(df_disp, use_container_width=True, height=420)
     if len(df) > max_preview:
         st.caption(f"Affichage limité à {max_preview} lignes sur {len(df)}. Téléchargez l'Excel pour tout voir.")
 
 with tab1:
-    show_tab(df_s1,
-             ["Organisation", "Objet de l'action", "Période début", "Période fin",
-              "Types d'actions", "Responsables publics contactés", "Domaines d'intervention"],
-             "d'actions")
+    show_tab(df_s1, "d'actions")
 
 with tab2:
-    show_tab(df_s2,
-             [COL_DENOM, "nom_usage_hatvp", "label_categorie_organisation",
-              "ville", "site_web", "objets_activite_matches"],
-             "d'organisations")
+    _df_s2_export = df_s2.drop(columns=[COL_REP_ID], errors="ignore")
+    show_tab(_df_s2_export, "d'organisations")
 
 with tab3:
-    show_tab(df_s3,
-             ["statut", "nom_prenom", "fonction", COL_DENOM, "ville"],
-             "de personnes")
+    show_tab(df_s3, "de personnes")
 
 with tab4:
     if df_s4.empty:
         st.info("Aucun client déclaré — les organisations matchées ne sont pas des mandataires, ou cette donnée n'est pas disponible.")
     else:
-        show_tab(df_s4,
-                 ["Cabinet mandataire", "Client (donneur d'ordre)", "SIREN client", "Ancien client"],
-                 "de clients")
+        show_tab(df_s4, "de clients")
 
 # ─── EXPORT ───────────────────────────────────────────────────────────────────
 
 st.divider()
-_df_s2_export = df_s2.drop(columns=[COL_REP_ID], errors="ignore")
 excel_bytes = build_excel([
     ("Actions de lobbying",         df_s1),
     ("Organisations",               _df_s2_export),
