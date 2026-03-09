@@ -216,75 +216,69 @@ def _word_boundary_match(needle: str, haystack: str) -> bool:
     pattern = r"(?<![\w\u00C0-\u024F])" + re.escape(needle) + r"(?![\w\u00C0-\u024F])"
     return bool(re.search(pattern, haystack, re.IGNORECASE))
 
-def search_secteurs(keyword, df_secteurs, exact=False):
-    variants = generate_variants(keyword) if not exact else [keyword.strip()]
-    results = {}
-    for variant in variants:
-        v_norm = normalize(variant)
-        if exact:
-            mask = df_secteurs[COL_SECTEUR].dropna().apply(
-                lambda s: _word_boundary_match(v_norm, normalize(s)))
-        else:
-            mask = df_secteurs[COL_SECTEUR].dropna().apply(
-                lambda s: v_norm in normalize(s))
-        matched = df_secteurs.loc[mask.index[mask], COL_SECTEUR].unique().tolist()
-        if matched:
-            results[variant] = sorted(set(matched))
-    seen, groups = {}, []
-    for v, secs in results.items():
-        key = frozenset(secs)
-        if key not in seen:
-            seen[key] = v
-            groups.append((v, secs))
-    return groups
-
-def search_objets(keyword, df_objets, exact=False):
+def _make_matcher(keyword, exact):
+    """Retourne un callable qui teste si une chaîne matche le mot-clé."""
     if exact:
-        # Mot entier uniquement — pas de variantes tronquées
         kw_norm = normalize(keyword.strip())
-        mask = df_objets[COL_OBJET].dropna().apply(
-            lambda s: _word_boundary_match(kw_norm, normalize(s)))
+        return lambda s: _word_boundary_match(kw_norm, normalize(str(s)))
     else:
-        # Mode élargi : variantes + sous-chaînes
         kw_norms = list(set(normalize(v) for v in generate_variants(keyword)))
-        mask = df_objets[COL_OBJET].dropna().apply(
-            lambda s: any(kw in normalize(s) for kw in kw_norms))
-    return df_objets.loc[mask.index[mask]]
+        return lambda s: any(kw in normalize(str(s)) for kw in kw_norms)
 
-def search_organisations(keyword, df_infos, exact=False):
+def _series_matches_rules(series, rules, exact):
+    """Masque booléen sur une Series : True si toutes les règles include matchent et aucune exclude."""
+    mask = pd.Series(True, index=series.index)
+    for r in rules:
+        kw = r["keyword"].strip()
+        if not kw:
+            continue
+        matcher = _make_matcher(kw, exact)
+        kw_mask = series.fillna("").apply(matcher)
+        if r["op"] == "Inclure":
+            mask = mask & kw_mask
+        else:
+            mask = mask & ~kw_mask
+    return mask
+
+def _df_matches_rules(df, cols, rules, exact):
+    """Masque booléen sur un DataFrame : True si AU MOINS UNE colonne matche toutes les règles."""
+    mask = pd.Series(True, index=df.index)
+    for r in rules:
+        kw = r["keyword"].strip()
+        if not kw:
+            continue
+        matcher = _make_matcher(kw, exact)
+        col_match = df[cols].apply(lambda col: col.fillna("").apply(matcher)).any(axis=1)
+        if r["op"] == "Inclure":
+            mask = mask & col_match
+        else:
+            mask = mask & ~col_match
+    return mask
+
+def search_secteurs(rules, df_secteurs, exact=False):
+    """Retourne la liste triée des secteurs matchant les règles."""
+    sectors = df_secteurs[COL_SECTEUR].drop_duplicates().dropna()
+    mask = _series_matches_rules(sectors, rules, exact)
+    return sorted(sectors[mask].unique().tolist())
+
+def search_objets(rules, df_objets, exact=False):
+    mask = _series_matches_rules(df_objets[COL_OBJET], rules, exact)
+    return df_objets.loc[mask]
+
+def search_organisations(rules, df_infos, exact=False):
     search_cols = [c for c in ["denomination", "nom_usage_hatvp", "sigle_hatvp"]
                    if c in df_infos.columns]
-    if exact:
-        kw_norm = normalize(keyword.strip())
-        def _match(s): return _word_boundary_match(kw_norm, normalize(str(s)))
-    else:
-        kw_norms = list(set(normalize(v) for v in generate_variants(keyword)))
-        def _match(s): return any(kw in normalize(str(s)) for kw in kw_norms)
-    mask = df_infos[search_cols].apply(
-        lambda col: col.fillna("").apply(_match)
-    ).any(axis=1)
+    mask = _df_matches_rules(df_infos, search_cols, rules, exact)
     return df_infos.loc[mask]
 
-def search_donneurs_ordre(keyword, df_clients, exact=False):
+def search_donneurs_ordre(rules, df_clients, exact=False):
     """Recherche dans les noms de clients (donneurs d'ordre) déclarés par les cabinets mandataires."""
     if "denomination_client" not in df_clients.columns or df_clients.empty:
         return pd.DataFrame()
-    if exact:
-        kw_norm = normalize(keyword.strip())
-        def _m(s): return _word_boundary_match(kw_norm, normalize(str(s)))
-    else:
-        kw_norms = [normalize(v) for v in generate_variants(keyword)]
-        def _m(s): return any(kw in normalize(str(s)) for kw in kw_norms)
-    mask = df_clients["denomination_client"].fillna("").apply(_m)
+    mask = _series_matches_rules(df_clients["denomination_client"], rules, exact)
     return df_clients.loc[mask]
 
-def search_personnes(keyword, df_dirigeants, df_collaborateurs, exact=False):
-    if exact:
-        kw_norm = normalize(keyword.strip())
-        def _match(s): return _word_boundary_match(kw_norm, normalize(str(s)))
-    else:
-        kw_norms = list(set(normalize(v) for v in generate_variants(keyword)))
-        def _match(s): return any(kw in normalize(str(s)) for kw in kw_norms)
+def search_personnes(rules, df_dirigeants, df_collaborateurs, exact=False):
     frames = []
     for df_src, statut, name_cols in [
         (df_dirigeants, "Dirigeant",
@@ -295,7 +289,7 @@ def search_personnes(keyword, df_dirigeants, df_collaborateurs, exact=False):
         if df_src.empty: continue
         cols = [c for c in name_cols if c in df_src.columns]
         if not cols: continue
-        mask = df_src[cols].apply(lambda col: col.fillna("").apply(_match)).any(axis=1)
+        mask = _df_matches_rules(df_src, cols, rules, exact)
         matched = df_src.loc[mask].copy()
         matched["_statut_match"] = statut
         frames.append(matched)
@@ -574,9 +568,41 @@ with st.sidebar:
         unsafe_allow_html=True)
     st.divider()
     st.markdown("### 🔍 Recherche")
-    keyword = st.text_input("Mot-clé",
-        placeholder="ex : taxe carbone, CVAE, MiCA, énergie...",
-        help="Les accents et la casse sont ignorés.")
+    if "kw_rules" not in st.session_state:
+        st.session_state.kw_rules = [{"keyword": "", "op": "Inclure"}]
+
+    st.markdown("**Mots-clés**")
+    to_delete = None
+    for i, rule in enumerate(st.session_state.kw_rules):
+        c1, c2, c3 = st.columns([3, 2, 0.6])
+        with c1:
+            st.session_state.kw_rules[i]["keyword"] = st.text_input(
+                f"kw{i}", value=rule["keyword"], key=f"kw_{i}",
+                label_visibility="collapsed",
+                placeholder="ex : énergie, MiCA...")
+        with c2:
+            st.session_state.kw_rules[i]["op"] = st.selectbox(
+                f"op{i}", ["Inclure", "Exclure"], key=f"op_{i}",
+                label_visibility="collapsed",
+                index=0 if rule["op"] == "Inclure" else 1)
+        with c3:
+            if len(st.session_state.kw_rules) > 1:
+                if st.button("✕", key=f"del_{i}", use_container_width=True):
+                    to_delete = i
+    if to_delete is not None:
+        st.session_state.kw_rules.pop(to_delete)
+        st.rerun()
+    if st.button("＋ Ajouter un critère", use_container_width=True):
+        st.session_state.kw_rules.append({"keyword": "", "op": "Inclure"})
+        st.rerun()
+
+    keyword_rules = [r for r in st.session_state.kw_rules if r["keyword"].strip()]
+    include_kws = [r["keyword"].strip() for r in keyword_rules if r["op"] == "Inclure"]
+    exclude_kws = [r["keyword"].strip() for r in keyword_rules if r["op"] == "Exclure"]
+    keyword_label = " ET ".join(f"« {k} »" for k in include_kws) if include_kws else ""
+    if exclude_kws:
+        keyword_label += (" SAUF " if keyword_label else "") + ", ".join(f"« {k} »" for k in exclude_kws)
+    keyword_slug = "_".join((include_kws + exclude_kws)[:3]).replace(" ", "-")
     mode = st.radio("Mode de recherche",
         ["Objets d'activité", "Secteurs d'activité", "Organisations", "Personnes",
          "Donneurs d'ordre"], index=0,
@@ -648,7 +674,7 @@ st.divider()
 
 # ─── DOCUMENTATION ────────────────────────────────────────────────────────────
 
-with st.expander("📖 Comment utiliser cet outil ?", expanded=not keyword):
+with st.expander("📖 Comment utiliser cet outil ?", expanded=not keyword_rules):
     c1, c2 = st.columns(2)
     with c1:
         st.markdown("""
@@ -784,7 +810,7 @@ st.markdown(f"""
 </div>""", unsafe_allow_html=True)
 
 # Secteurs pills
-if mode_key == "secteurs" and not keyword:
+if mode_key == "secteurs" and not keyword_rules:
     st.markdown("#### 📋 Secteurs disponibles")
     all_s = df_secteurs[COL_SECTEUR].dropna().value_counts()
     pills = "".join(f'<span class="sector-pill">{s} <span style="color:#334466;">({n})</span></span>'
@@ -793,10 +819,10 @@ if mode_key == "secteurs" and not keyword:
 
 st.divider()
 
-if not keyword:
+if not keyword_rules:
     st.markdown(
         "<div style='text-align:center;padding:40px;color:#334466;font-family:DM Mono,monospace;'>"
-        "← Saisissez un mot-clé dans la barre de gauche pour commencer</div>",
+        "← Saisissez au moins un mot-clé dans la barre de gauche pour commencer</div>",
         unsafe_allow_html=True)
     st.stop()
 
@@ -810,7 +836,7 @@ badge_class = {
 st.markdown(
     f'<span class="mode-badge {badge_class}">Mode : {mode}</span>',
     unsafe_allow_html=True)
-st.markdown(f"### Résultats pour **« {keyword} »**")
+st.markdown(f"### Résultats pour **{keyword_label}**")
 
 ids_retenus        = []
 df_objets_match    = pd.DataFrame()
@@ -819,9 +845,9 @@ _collaborateurs_for_s3 = df_collaborateurs
 
 # ── Mode OBJETS ───────────────────────────────────────────────────────────────
 if mode_key == "objets":
-    df_objets_match = search_objets(keyword, df_objets, exact=exact_match)
+    df_objets_match = search_objets(keyword_rules, df_objets, exact=exact_match)
     if df_objets_match.empty:
-        st.warning(f"Aucun objet d'activité ne contient « {keyword} ».")
+        st.warning(f"Aucun objet d'activité ne correspond à {keyword_label}.")
         st.stop()
     exo_rep = df_exercices[[COL_EXO_ID, COL_REP_ID]].drop_duplicates()
     ids_retenus = (df_objets_match.merge(exo_rep, on=COL_EXO_ID, how="left")
@@ -846,11 +872,10 @@ if mode_key == "objets":
 
 # ── Mode SECTEURS ─────────────────────────────────────────────────────────────
 elif mode_key == "secteurs":
-    groups = search_secteurs(keyword, df_secteurs, exact=exact_match)
-    if not groups:
-        st.warning(f"Aucun secteur ne correspond à « {keyword} ».")
+    all_sectors_found = search_secteurs(keyword_rules, df_secteurs, exact=exact_match)
+    if not all_sectors_found:
+        st.warning(f"Aucun secteur ne correspond à {keyword_label}.")
         st.stop()
-    all_sectors_found = sorted(set(s for _, secs in groups for s in secs))
     val_counts = df_secteurs[COL_SECTEUR].value_counts()
     selected_sectors = st.multiselect(
         "Secteurs trouvés — sélectionnez ceux à inclure :",
@@ -875,9 +900,9 @@ elif mode_key == "secteurs":
 
 # ── Mode ORGANISATIONS ────────────────────────────────────────────────────────
 elif mode_key == "organisations":
-    df_orgs_match = search_organisations(keyword, df_infos, exact=exact_match)
+    df_orgs_match = search_organisations(keyword_rules, df_infos, exact=exact_match)
     if df_orgs_match.empty:
-        st.warning(f"Aucune organisation ne correspond à « {keyword} ».")
+        st.warning(f"Aucune organisation ne correspond à {keyword_label}.")
         st.stop()
     ids_retenus = df_orgs_match[COL_REP_ID].dropna().unique().tolist()
     exo_ids = df_exercices[df_exercices[COL_REP_ID].isin(ids_retenus)][COL_EXO_ID].unique()
@@ -902,9 +927,9 @@ elif mode_key == "organisations":
 
 # ── Mode PERSONNES ────────────────────────────────────────────────────────────
 elif mode_key == "personnes":
-    df_pers_match = search_personnes(keyword, df_dirigeants, df_collaborateurs, exact=exact_match)
+    df_pers_match = search_personnes(keyword_rules, df_dirigeants, df_collaborateurs, exact=exact_match)
     if df_pers_match.empty:
-        st.warning(f"Aucune personne ne correspond à « {keyword} ».")
+        st.warning(f"Aucune personne ne correspond à {keyword_label}.")
         st.stop()
     ids_retenus = df_pers_match[COL_REP_ID].dropna().unique().tolist()
     exo_ids = df_exercices[df_exercices[COL_REP_ID].isin(ids_retenus)][COL_EXO_ID].unique()
@@ -942,9 +967,9 @@ elif mode_key == "personnes":
 
 # ── Mode DONNEURS D'ORDRE ─────────────────────────────────────────────────────
 elif mode_key == "donneurs":
-    df_do_match = search_donneurs_ordre(keyword, df_clients, exact=exact_match)
+    df_do_match = search_donneurs_ordre(keyword_rules, df_clients, exact=exact_match)
     if df_do_match.empty:
-        st.warning(f"Aucun donneur d'ordre ne correspond à « {keyword} ».")
+        st.warning(f"Aucun donneur d'ordre ne correspond à {keyword_label}.")
         st.stop()
 
     matched_client_names = set(df_do_match["denomination_client"].dropna().unique())
@@ -1083,7 +1108,7 @@ excel_bytes = build_excel([
     ("Dirigeants & Collaborateurs", df_s3),
     ("Clients & Mandats",           df_s4),
 ])
-filename = f"hatvp_{keyword.replace(' ','_')}_{mode_key}.xlsx"
+filename = f"hatvp_{keyword_slug}_{mode_key}.xlsx"
 n3 = len(df_s3) if not df_s3.empty else 0
 n4 = len(df_s4) if not df_s4.empty else 0
 st.download_button(
