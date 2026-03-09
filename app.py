@@ -11,6 +11,7 @@ import pandas as pd
 import unicodedata
 import gzip
 import io
+import os
 import zipfile
 import requests
 import tempfile
@@ -30,29 +31,30 @@ st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&display=swap');
 html, body, [class*="css"] { font-family: 'Syne', sans-serif; }
-.stApp { background-color: #0e1117; }
-[data-testid="stSidebar"] { background-color: #131720; border-right: 1px solid #1e2535; }
+.stApp { background-color: #0d1b35; }
+[data-testid="stSidebar"] { background-color: #122040; border-right: 1px solid #1e3560; }
 h1 { font-family: 'Syne', sans-serif !important; font-weight: 800 !important; letter-spacing: -1px !important; }
 h2, h3 { font-family: 'Syne', sans-serif !important; font-weight: 700 !important; }
-.doc-card { background: linear-gradient(135deg, #131720 0%, #1a2035 100%); border: 1px solid #2a3550; border-radius: 12px; padding: 20px 24px; margin-bottom: 14px; }
+.doc-card { background: linear-gradient(135deg, #122040 0%, #1a2e58 100%); border: 1px solid #2d4480; border-radius: 12px; padding: 20px 24px; margin-bottom: 14px; }
 .doc-card h4 { color: #e8c97a; font-family: 'Syne', sans-serif; font-weight: 700; font-size: 15px; margin: 0 0 8px 0; }
 .doc-card p { color: #8899bb; font-family: 'DM Mono', monospace; font-size: 13px; margin: 0; line-height: 1.6; }
-.doc-card code { background: #0e1117; color: #7dd3fc; padding: 2px 6px; border-radius: 4px; font-size: 12px; }
+.doc-card code { background: #0d1b35; color: #7dd3fc; padding: 2px 6px; border-radius: 4px; font-size: 12px; }
 .stat-row { display: flex; gap: 12px; margin: 16px 0; }
-.stat-box { flex: 1; background: #131720; border: 1px solid #1e2535; border-radius: 10px; padding: 16px; text-align: center; }
+.stat-box { flex: 1; background: #122040; border: 1px solid #1e3560; border-radius: 10px; padding: 16px; text-align: center; }
 .stat-number { font-family: 'Syne', sans-serif; font-size: 28px; font-weight: 800; color: #e8c97a; line-height: 1; }
-.stat-label { font-family: 'DM Mono', monospace; font-size: 11px; color: #556688; margin-top: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+.stat-label { font-family: 'DM Mono', monospace; font-size: 11px; color: #6677aa; margin-top: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
 .mode-badge { display: inline-block; padding: 4px 12px; border-radius: 20px; font-family: 'DM Mono', monospace; font-size: 12px; font-weight: 500; margin-bottom: 8px; }
-.mode-objets { background: #1e3a5f; color: #7dd3fc; border: 1px solid #2563eb55; }
+.mode-objets { background: #1e4070; color: #93c5fd; border: 1px solid #3b82f655; }
 .mode-secteurs { background: #2d1f4e; color: #c4b5fd; border: 1px solid #7c3aed55; }
 .mode-orgs { background: #1a3a2a; color: #6ee7b7; border: 1px solid #05966955; }
 .mode-personnes { background: #3a2020; color: #fca5a5; border: 1px solid #dc262655; }
-.sector-pill { display: inline-block; background: #1a2035; border: 1px solid #2a3550; border-radius: 20px; padding: 5px 14px; margin: 4px; font-family: 'DM Mono', monospace; font-size: 12px; color: #93b4d8; }
-.stButton > button { background: linear-gradient(135deg, #1d4ed8, #2563eb) !important; color: white !important; border: none !important; border-radius: 8px !important; font-family: 'Syne', sans-serif !important; font-weight: 600 !important; }
+.mode-donneurs { background: #2a1f40; color: #d8b4fe; border: 1px solid #a855f755; }
+.sector-pill { display: inline-block; background: #1a2e58; border: 1px solid #2d4480; border-radius: 20px; padding: 5px 14px; margin: 4px; font-family: 'DM Mono', monospace; font-size: 12px; color: #93b4d8; }
+.stButton > button { background: linear-gradient(135deg, #2563eb, #3b82f6) !important; color: white !important; border: none !important; border-radius: 8px !important; font-family: 'Syne', sans-serif !important; font-weight: 600 !important; }
 .stDownloadButton > button { background: linear-gradient(135deg, #065f46, #047857) !important; color: white !important; border: none !important; border-radius: 8px !important; font-family: 'Syne', sans-serif !important; font-weight: 600 !important; }
-.stTextInput > div > div > input { background: #131720 !important; border: 1px solid #2a3550 !important; border-radius: 8px !important; color: #e2e8f0 !important; font-family: 'DM Mono', monospace !important; }
-.stSelectbox > div > div { background: #131720 !important; border: 1px solid #2a3550 !important; border-radius: 8px !important; }
-hr { border-color: #1e2535 !important; }
+.stTextInput > div > div > input { background: #122040 !important; border: 1px solid #2d4480 !important; border-radius: 8px !important; color: #e2e8f0 !important; font-family: 'DM Mono', monospace !important; }
+.stSelectbox > div > div { background: #122040 !important; border: 1px solid #2d4480 !important; border-radius: 8px !important; }
+hr { border-color: #1e3560 !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -79,6 +81,8 @@ TABLE_KEYWORDS = {
     "ministeres":     ["ministere"],
     "domaines":       ["domaine"],
     "decisions":      ["decision"],
+    "clients":        ["client"],
+    "beneficiaires":  ["beneficiaire"],
 }
 
 def find_csv_in_zip(csv_names, keywords):
@@ -90,11 +94,13 @@ def _nc(c):
     """Normalise un nom de colonne brut (même logique que normalize_cols)."""
     return c.strip().lower().replace(" ", "_").strip('"').strip("'")
 
-def _col_filter(fixed=(), patterns=()):
+def _col_filter(fixed=(), patterns=(), exclude=()):
     """Retourne un callable usecols qui filtre sur noms normalisés."""
     fixed_set = set(fixed)
     def keep(c):
         nc = _nc(c)
+        if exclude and any(e in nc for e in exclude):
+            return False
         return nc in fixed_set or any(p in nc for p in patterns)
     return keep
 
@@ -105,8 +111,7 @@ TABLE_COLS = {
                                    "code_postal", "ville", "pays", "site_web", "page_linkedin",
                                    "page_twitter", "date_premiere_publication",
                                    "identifiant_national", "type_identifiant_national"}),
-    "objets":         _col_filter({"objet_activite", "exercices_id", "activite_id",
-                                   "identifiant_fiche"}),
+    "objets":         _col_filter({"objet_activite", "exercices_id", "activite_id"}),
     "exercices":      _col_filter({"exercices_id", "representants_id",
                                    "annee_debut", "annee_fin"}),
     "dirigeants":     _col_filter({"representants_id", "civilite_dirigeant", "nom_dirigeant",
@@ -116,9 +121,17 @@ TABLE_COLS = {
                                    "nom_collaborateur", "prenom_collaborateur",
                                    "fonction_collaborateur", "nom_prenom_collaborateur"}),
     "ari":            _col_filter({"activite_id", "action_representation_interet_id"}),
-    "actions":        _col_filter({"action_representation_interet_id"}, ("action_menee",)),
-    "ministeres":     _col_filter({"action_representation_interet_id"}, ("responsable_public",)),
+    "actions":        _col_filter({"action_representation_interet_id"}, ("action_menee",),
+                                  exclude=("autre",)),
+    "ministeres":     _col_filter({"action_representation_interet_id"}, ("responsable_public",),
+                                  exclude=("autre",)),
     "domaines":       _col_filter({"activite_id"}, ("domaine",)),
+    "clients":        _col_filter({"representants_id", "denomination_client",
+                                   "identifiant_national_client", "ancienclient",
+                                   "datecessation"}),
+    "beneficiaires":  _col_filter({"beneficiaire_action_menee",
+                                   "action_representation_interet_id",
+                                   "action_menee_en_propre"}),
 }
 
 # ─── UTILITAIRES ──────────────────────────────────────────────────────────────
@@ -252,6 +265,19 @@ def search_organisations(keyword, df_infos, exact=False):
     ).any(axis=1)
     return df_infos.loc[mask]
 
+def search_donneurs_ordre(keyword, df_clients, exact=False):
+    """Recherche dans les noms de clients (donneurs d'ordre) déclarés par les cabinets mandataires."""
+    if "denomination_client" not in df_clients.columns or df_clients.empty:
+        return pd.DataFrame()
+    if exact:
+        kw_norm = normalize(keyword.strip())
+        def _m(s): return _word_boundary_match(kw_norm, normalize(str(s)))
+    else:
+        kw_norms = [normalize(v) for v in generate_variants(keyword)]
+        def _m(s): return any(kw in normalize(str(s)) for kw in kw_norms)
+    mask = df_clients["denomination_client"].fillna("").apply(_m)
+    return df_clients.loc[mask]
+
 def search_personnes(keyword, df_dirigeants, df_collaborateurs, exact=False):
     if exact:
         kw_norm = normalize(keyword.strip())
@@ -288,8 +314,10 @@ def _agg(df, group_col, val_col, out_name):
             .reset_index().rename(columns={val_col: out_name}))
 
 def enrich_actions(df_objets_matched, df_exercices,
-                   df_ari, df_actions, df_ministeres, df_domaines):
+                   df_ari, df_actions, df_ministeres, df_domaines, df_beneficiaires=None):
     """Jointures via 14_observations.csv comme table pivot."""
+    if df_beneficiaires is None:
+        df_beneficiaires = pd.DataFrame()
 
     # 1. objets → exercices
     exo_cols = ["exercices_id", "representants_id"]
@@ -340,6 +368,22 @@ def enrich_actions(df_objets_matched, df_exercices,
     else:
         df["domaines_intervention"] = None
 
+    # 6. ari_id → donneur d'ordre (bénéficiaire quand action faite pour un tiers)
+    if (not df_beneficiaires.empty
+            and COL_ARI_ID_APP in df_beneficiaires.columns
+            and "action_menee_en_propre" in df_beneficiaires.columns):
+        df_tiers = df_beneficiaires[
+            df_beneficiaires["action_menee_en_propre"].astype(str) == "0"
+        ]
+        if not df_tiers.empty:
+            df = df.merge(
+                _agg(df_tiers, COL_ARI_ID_APP, "beneficiaire_action_menee", "donneur_ordre"),
+                on=COL_ARI_ID_APP, how="left")
+        else:
+            df["donneur_ordre"] = None
+    else:
+        df["donneur_ordre"] = None
+
     return df
 
 # ─── CONSTRUCTION DES ONGLETS ─────────────────────────────────────────────────
@@ -351,10 +395,9 @@ def build_actions_sheet(df_enriched, df_infos):
     df = df_enriched.merge(
         df_infos[org_cols].drop_duplicates(subset=[COL_REP_ID]),
         on=COL_REP_ID, how="left")
-    wanted = [COL_DENOM, "nom_usage_hatvp", "label_categorie_organisation", "ville",
-              COL_REP_ID, COL_OBJET, "annee_debut", "annee_fin",
-              "types_actions", "responsables_publics", "domaines_intervention",
-              "identifiant_fiche", COL_ACT_ID]
+    wanted = [COL_DENOM, "label_categorie_organisation", "ville",
+              COL_OBJET, "annee_debut", "annee_fin",
+              "donneur_ordre", "types_actions", "responsables_publics", "domaines_intervention"]
     cols = list(dict.fromkeys(c for c in wanted if c in df.columns))
     rename = {
         COL_DENOM:                    "Organisation",
@@ -367,6 +410,7 @@ def build_actions_sheet(df_enriched, df_infos):
         "annee_fin":                  "Période fin",
         "types_actions":              "Types d'actions",
         "responsables_publics":       "Responsables publics contactés",
+        "donneur_ordre":              "Donneur d'ordre",
         "domaines_intervention":      "Domaines d'intervention",
         "identifiant_fiche":          "ID Fiche HATVP",
         COL_ACT_ID:                   "ID Activité",
@@ -419,11 +463,57 @@ def build_persons_sheet(ids, df_orgs, df_dirigeants, df_collaborateurs):
     if not frames:
         return pd.DataFrame()
     df_p = pd.concat(frames, ignore_index=True).merge(df_org, on=COL_REP_ID, how="left")
-    wanted = ["statut", "civilite", "nom", "prenom", "fonction", "nom_prenom",
-              COL_REP_ID, COL_DENOM, "nom_usage_hatvp",
-              "label_categorie_organisation", "ville", "site_web", "objets_activite_matches"]
+    wanted = ["statut", "civilite", "nom", "prenom", "fonction",
+              COL_DENOM, "label_categorie_organisation", "ville", "site_web", "objets_activite_matches"]
     cols = list(dict.fromkeys(c for c in wanted if c in df_p.columns))
     return df_p[cols].sort_values([COL_DENOM, "statut", "nom"], na_position="last")
+
+def build_clients_sheet(ids, df_clients, df_infos, ari_ids=None, df_beneficiaires=None,
+                        allowed_clients=None):
+    if df_clients.empty or "representants_id" not in df_clients.columns:
+        return pd.DataFrame()
+    df = df_clients[df_clients["representants_id"].isin(ids)].copy()
+    if df.empty:
+        return pd.DataFrame()
+    # Restreindre à une liste explicite de clients (mode donneurs d'ordre)
+    if allowed_clients is not None and "denomination_client" in df.columns:
+        df = df[df["denomination_client"].isin(allowed_clients)]
+    # Restreindre aux clients effectivement liés aux actions matchées
+    if (ari_ids is not None and df_beneficiaires is not None
+            and not df_beneficiaires.empty
+            and COL_ARI_ID_APP in df_beneficiaires.columns
+            and "action_menee_en_propre" in df_beneficiaires.columns
+            and "beneficiaire_action_menee" in df_beneficiaires.columns):
+        df_tiers = df_beneficiaires[
+            (df_beneficiaires[COL_ARI_ID_APP].isin(ari_ids)) &
+            (df_beneficiaires["action_menee_en_propre"].astype(str) == "0")
+        ]
+        if not df_tiers.empty:
+            matched_clients = set(df_tiers["beneficiaire_action_menee"].dropna().unique())
+            df = df[df["denomination_client"].isin(matched_clients)]
+    if df.empty:
+        return pd.DataFrame()
+    cab_cols = [c for c in ["representants_id", "denomination", "nom_usage_hatvp",
+                             "label_categorie_organisation"] if c in df_infos.columns]
+    df = df.merge(df_infos[cab_cols].drop_duplicates("representants_id"),
+                  on="representants_id", how="left")
+    wanted = ["denomination", "nom_usage_hatvp", "label_categorie_organisation",
+              "denomination_client", "identifiant_national_client",
+              "ancienclient", "datecessation"]
+    cols = [c for c in wanted if c in df.columns]
+    rename = {
+        "denomination":               "Cabinet mandataire",
+        "nom_usage_hatvp":            "Nom HATVP cabinet",
+        "label_categorie_organisation": "Catégorie cabinet",
+        "representants_id":           "ID Cabinet",
+        "denomination_client":        "Client (donneur d'ordre)",
+        "identifiant_national_client": "SIREN client",
+        "ancienclient":               "Ancien client",
+        "datecessation":              "Date cessation",
+    }
+    df = df[cols].rename(columns={k: v for k, v in rename.items() if k in cols})
+    sort_col = "Cabinet mandataire" if "Cabinet mandataire" in df.columns else df.columns[0]
+    return df.sort_values(sort_col, na_position="last")
 
 # ─── EXPORT EXCEL ─────────────────────────────────────────────────────────────
 
@@ -445,6 +535,35 @@ def build_excel(sheets):
                 ].width = min(max_len + 2, 60)
     return buf.getvalue()
 
+# ─── FEEDBACK ─────────────────────────────────────────────────────────────────
+
+def send_feedback_email(fb_type, message, user_email=""):
+    form_id = os.environ.get("FORMSPREE_FORM_ID", "xqeyegea")
+    if not form_id:
+        return False, "Formspree non configuré (variable FORMSPREE_FORM_ID manquante)"
+    body = f"Type : {fb_type}\n"
+    if user_email:
+        body += f"Email utilisateur : {user_email}\n"
+    body += f"\nMessage :\n{message}"
+    payload = {
+        "subject": f"[HATVP To Table] {fb_type}",
+        "message": body,
+    }
+    if user_email:
+        payload["_replyto"] = user_email
+    try:
+        r = requests.post(
+            f"https://formspree.io/f/{form_id}",
+            json=payload,
+            headers={"Accept": "application/json"},
+            timeout=10,
+        )
+        if r.status_code == 200:
+            return True, ""
+        return False, f"Erreur Formspree : {r.status_code}"
+    except Exception as e:
+        return False, str(e)
+
 # ─── SIDEBAR ──────────────────────────────────────────────────────────────────
 
 with st.sidebar:
@@ -459,7 +578,8 @@ with st.sidebar:
         placeholder="ex : taxe carbone, CVAE, MiCA, énergie...",
         help="Les accents et la casse sont ignorés.")
     mode = st.radio("Mode de recherche",
-        ["Objets d'activité", "Secteurs d'activité", "Organisations", "Personnes"], index=0,
+        ["Objets d'activité", "Secteurs d'activité", "Organisations", "Personnes",
+         "Donneurs d'ordre"], index=0,
         help=(
             "**Objets** : full-text dans ~95 000 descriptions. "
             "**Secteurs** : 31 catégories. "
@@ -471,9 +591,9 @@ with st.sidebar:
         "Secteurs d'activité": "secteurs",
         "Organisations":       "organisations",
         "Personnes":           "personnes",
+        "Donneurs d'ordre":    "donneurs",
     }[mode]
 
-    st.markdown("#### 🎯 Précision du matching")
     matching_mode = st.radio(
         "Mode de matching",
         ["Élargi", "Exact"],
@@ -491,6 +611,29 @@ with st.sidebar:
     max_preview = st.slider("Lignes à afficher", 5, 50, 15)
     show_all_cols = st.checkbox("Toutes les colonnes", value=False)
     st.divider()
+    with st.popover("💬 Donner un feedback", use_container_width=True):
+        st.markdown("##### Envoyer un retour")
+        with st.form("feedback_form", clear_on_submit=True):
+            fb_type = st.selectbox(
+                "Type de retour",
+                ["Suggestion", "Bug / Erreur", "Question", "Autre"])
+            fb_msg = st.text_area(
+                "Message *",
+                placeholder="Décrivez votre retour, suggestion ou problème...",
+                height=120)
+            fb_email = st.text_input(
+                "Votre email (optionnel)",
+                placeholder="Pour un suivi éventuel")
+            submitted = st.form_submit_button("Envoyer", use_container_width=True)
+            if submitted:
+                if not fb_msg.strip():
+                    st.error("Le message ne peut pas être vide.")
+                else:
+                    ok, err = send_feedback_email(fb_type, fb_msg.strip(), fb_email.strip())
+                    if ok:
+                        st.success("Merci pour votre retour !")
+                    else:
+                        st.error(f"Erreur d'envoi : {err}")
     st.markdown(
         "<p style='font-family:DM Mono,monospace;font-size:11px;color:#334466;'>"
         "Données HATVP · Cache 12h</p>", unsafe_allow_html=True)
@@ -546,23 +689,36 @@ Les onglets Actions et Organisations couvrent en revanche toutes les activités 
 <strong>Exemples :</strong><br>
 → <code>Dupont</code> · <code>Jean Martin</code>
 </p></div>""", unsafe_allow_html=True)
+        st.markdown("""
+<div class="doc-card">
+<h4>🤝 Mode Donneurs d'ordre</h4>
+<p>Recherche par nom de client dans les mandats déclarés par les cabinets de lobbying.<br>
+Retourne uniquement les organisations qui agissent en tant que <em>mandataires</em> (cabinets) pour le compte de l'entité recherchée, ainsi que les actions menées spécifiquement pour ce donneur d'ordre.<br><br>
+<strong style="color:#d8b4fe;">Nuance :</strong> l'onglet Clients de l'export contient les mandats correspondant au donneur d'ordre matché — pas tous les clients des cabinets trouvés.<br><br>
+<strong>Exemples :</strong><br>
+→ <code>Total</code> · <code>EDF</code> · <code>BNP Paribas</code>
+</p></div>""", unsafe_allow_html=True)
     with c2:
         st.markdown("""
 <div class="doc-card">
-<h4>📋 Structure de l'export Excel (3 onglets)</h4>
+<h4>📋 Structure de l'export Excel (4 onglets)</h4>
 <p>
 Quel que soit le mode de recherche, l'export suit toujours la même structure :<br><br>
-<strong style="color:#7dd3fc;">Onglet 1 — Actions de lobbying</strong><br>
+<strong style="color:#93c5fd;">Onglet 1 — Actions de lobbying</strong><br>
 → 1 ligne par action déclarée par les organisations matchées<br>
-→ Objet de l'action · période concernée<br>
-→ Types d'actions menées · Responsables publics contactés<br>
-→ Domaines d'intervention<br><br>
+→ Objet de l'action · période concernée · donneur d'ordre (si cabinet mandataire)<br>
+→ Types d'actions menées · Responsables publics contactés · Domaines d'intervention<br><br>
 <strong style="color:#6ee7b7;">Onglet 2 — Organisations</strong><br>
 → 1 ligne par organisation matchée<br>
 → Coordonnées · catégorie · identifiants · récapitulatif des actions<br><br>
 <strong style="color:#fca5a5;">Onglet 3 — Dirigeants & Collaborateurs</strong><br>
 → 1 ligne par personne associée aux organisations matchées<br>
-→ <em>En mode Personnes :</em> uniquement les personnes ayant matché
+→ <em>En mode Personnes :</em> uniquement les personnes ayant matché<br><br>
+<strong style="color:#e8c97a;">Onglet 4 — Clients & Mandats</strong><br>
+→ Uniquement si les organisations matchées sont des <em>cabinets mandataires</em><br>
+→ <em>Modes Objets / Secteurs :</em> clients liés aux actions ayant matché uniquement<br>
+→ <em>Modes Organisations / Personnes :</em> tous les clients déclarés des organisations listées<br>
+→ <em>Mode Donneurs d'ordre :</em> les donneurs d'ordre matchés avec leurs cabinets mandataires
 </p></div>""", unsafe_allow_html=True)
         st.markdown("""
 <div class="doc-card">
@@ -616,6 +772,8 @@ df_ari            = tables["ari"]
 df_actions        = tables["actions"]
 df_ministeres     = tables["ministeres"]
 df_domaines       = tables["domaines"]
+df_clients        = tables.get("clients",       pd.DataFrame())
+df_beneficiaires  = tables.get("beneficiaires", pd.DataFrame())
 
 # Stats
 st.markdown(f"""
@@ -648,6 +806,7 @@ if not keyword:
 badge_class = {
     "objets": "mode-objets", "secteurs": "mode-secteurs",
     "organisations": "mode-orgs", "personnes": "mode-personnes",
+    "donneurs": "mode-donneurs",
 }.get(mode_key, "mode-objets")
 st.markdown(
     f'<span class="mode-badge {badge_class}">Mode : {mode}</span>',
@@ -670,8 +829,8 @@ if mode_key == "objets":
                    [COL_REP_ID].dropna().unique().tolist())
 
     st.markdown(f"""
-<div style='background:#1e3a5f22;border:1px solid #2563eb44;border-radius:10px;padding:16px 20px;margin:12px 0;'>
-  <span style='font-family:Syne,sans-serif;font-size:24px;font-weight:800;color:#7dd3fc;'>{len(df_objets_match):,}</span>
+<div style='background:#1e407022;border:1px solid #3b82f644;border-radius:10px;padding:16px 20px;margin:12px 0;'>
+  <span style='font-family:Syne,sans-serif;font-size:24px;font-weight:800;color:#93c5fd;'>{len(df_objets_match):,}</span>
   <span style='font-family:DM Mono,monospace;color:#8899bb;font-size:13px;margin-left:8px;'>actions trouvées</span>
   &nbsp;·&nbsp;
   <span style='font-family:Syne,sans-serif;font-size:24px;font-weight:800;color:#e8c97a;'>{len(ids_retenus):,}</span>
@@ -683,7 +842,7 @@ if mode_key == "objets":
             objet = str(row[COL_OBJET])
             st.markdown(
                 f"<div style='font-family:DM Mono,monospace;font-size:12px;color:#93b4d8;"
-                f"padding:8px 12px;border-left:2px solid #2563eb44;margin-bottom:6px;'>{objet}</div>",
+                f"padding:8px 12px;border-left:2px solid #3b82f644;margin-bottom:6px;'>{objet}</div>",
                 unsafe_allow_html=True)
 
 # ── Mode SECTEURS ─────────────────────────────────────────────────────────────
@@ -782,6 +941,55 @@ elif mode_key == "personnes":
                 f"<span style='color:#556688;'>{statut}</span> — {nom}</div>",
                 unsafe_allow_html=True)
 
+# ── Mode DONNEURS D'ORDRE ─────────────────────────────────────────────────────
+elif mode_key == "donneurs":
+    df_do_match = search_donneurs_ordre(keyword, df_clients, exact=exact_match)
+    if df_do_match.empty:
+        st.warning(f"Aucun donneur d'ordre ne correspond à « {keyword} ».")
+        st.stop()
+
+    matched_client_names = set(df_do_match["denomination_client"].dropna().unique())
+    ids_retenus = df_do_match["representants_id"].dropna().unique().tolist()
+
+    # Actions menées pour ces donneurs d'ordre via df_beneficiaires
+    if (not df_beneficiaires.empty
+            and COL_ARI_ID_APP in df_beneficiaires.columns
+            and "action_menee_en_propre" in df_beneficiaires.columns
+            and "beneficiaire_action_menee" in df_beneficiaires.columns):
+        df_tiers_do = df_beneficiaires[
+            (df_beneficiaires["action_menee_en_propre"].astype(str) == "0") &
+            (df_beneficiaires["beneficiaire_action_menee"].isin(matched_client_names))
+        ]
+        ari_ids_do = df_tiers_do[COL_ARI_ID_APP].dropna().unique()
+        if len(ari_ids_do) and not df_ari.empty and COL_ACT_ID in df_ari.columns:
+            act_ids_do = df_ari[df_ari[COL_ARI_ID_APP].isin(ari_ids_do)][COL_ACT_ID].dropna().unique()
+            df_objets_match = df_objets[df_objets[COL_ACT_ID].isin(act_ids_do)]
+        else:
+            df_objets_match = pd.DataFrame(columns=df_objets.columns)
+    else:
+        exo_ids = df_exercices[df_exercices[COL_REP_ID].isin(ids_retenus)][COL_EXO_ID].unique()
+        df_objets_match = df_objets[df_objets[COL_EXO_ID].isin(exo_ids)]
+
+    nb_do = len(matched_client_names)
+    st.markdown(f"""
+<div style='background:#2a1f4022;border:1px solid #a855f744;border-radius:10px;padding:16px 20px;margin:12px 0;'>
+  <span style='font-family:Syne,sans-serif;font-size:24px;font-weight:800;color:#d8b4fe;'>{nb_do:,}</span>
+  <span style='font-family:DM Mono,monospace;color:#8899bb;font-size:13px;margin-left:8px;'>donneurs d'ordre trouvés</span>
+  &nbsp;·&nbsp;
+  <span style='font-family:Syne,sans-serif;font-size:24px;font-weight:800;color:#6ee7b7;'>{len(ids_retenus):,}</span>
+  <span style='font-family:DM Mono,monospace;color:#8899bb;font-size:13px;margin-left:8px;'>cabinets mandataires</span>
+  &nbsp;·&nbsp;
+  <span style='font-family:Syne,sans-serif;font-size:24px;font-weight:800;color:#e8c97a;'>{len(df_objets_match):,}</span>
+  <span style='font-family:DM Mono,monospace;color:#8899bb;font-size:13px;margin-left:8px;'>actions associées</span>
+</div>""", unsafe_allow_html=True)
+
+    with st.expander(f"🤝 Aperçu des {min(10, nb_do)} premiers donneurs d'ordre matchés"):
+        for name in list(matched_client_names)[:10]:
+            st.markdown(
+                f"<div style='font-family:DM Mono,monospace;font-size:12px;color:#d8b4fe;"
+                f"padding:8px 12px;border-left:2px solid #a855f744;margin-bottom:6px;'>{name}</div>",
+                unsafe_allow_html=True)
+
 # ─── ENRICHISSEMENT ───────────────────────────────────────────────────────────
 
 if df_objets_match.empty:
@@ -791,7 +999,7 @@ if df_objets_match.empty:
 with st.spinner("🔀 Enrichissement des actions (période, types, responsables)..."):
     df_enriched = enrich_actions(
         df_objets_match, df_exercices,
-        df_ari, df_actions, df_ministeres, df_domaines)
+        df_ari, df_actions, df_ministeres, df_domaines, df_beneficiaires)
     if COL_REP_ID in df_enriched.columns:
         df_enriched = df_enriched[df_enriched[COL_REP_ID].isin(ids_retenus)]
 
@@ -800,15 +1008,33 @@ with st.spinner("🔀 Enrichissement des actions (période, types, responsables)
 df_s1 = build_actions_sheet(df_enriched, df_infos)
 df_s2 = build_orgs_sheet(ids_retenus, df_infos, df_enriched)
 df_s3 = build_persons_sheet(ids_retenus, df_s2, _dirigeants_for_s3, _collaborateurs_for_s3)
+# En mode objets/secteurs : clients filtrés aux actions matchées uniquement
+# En mode objets/secteurs : clients filtrés aux actions matchées uniquement
+# En mode organisations/personnes : tous les clients des organisations listées
+# En mode donneurs : uniquement les clients matchés (via allowed_clients)
+if mode_key in ("objets", "secteurs"):
+    _ari_ids_matched = (df_enriched[COL_ARI_ID_APP].dropna().unique()
+                        if COL_ARI_ID_APP in df_enriched.columns else None)
+    _allowed_clients = None
+elif mode_key == "donneurs":
+    _ari_ids_matched = None
+    _allowed_clients = matched_client_names
+else:
+    _ari_ids_matched = None
+    _allowed_clients = None
+df_s4 = build_clients_sheet(ids_retenus, df_clients, df_infos,
+                             ari_ids=_ari_ids_matched, df_beneficiaires=df_beneficiaires,
+                             allowed_clients=_allowed_clients)
 
 # ─── AFFICHAGE ONGLETS ────────────────────────────────────────────────────────
 
 st.divider()
 
-tab1, tab2, tab3 = st.tabs([
+tab1, tab2, tab3, tab4 = st.tabs([
     f"📋 Actions ({len(df_s1)})",
     f"🏢 Organisations ({len(df_s2)})",
     f"👤 Personnes ({len(df_s3) if not df_s3.empty else 0})",
+    f"🤝 Clients ({len(df_s4) if not df_s4.empty else 0})",
 ])
 
 RENAME = {
@@ -851,18 +1077,29 @@ with tab3:
              ["statut", "nom_prenom", "fonction", COL_DENOM, "ville"],
              "de personnes")
 
+with tab4:
+    if df_s4.empty:
+        st.info("Aucun client déclaré — les organisations matchées ne sont pas des mandataires, ou cette donnée n'est pas disponible.")
+    else:
+        show_tab(df_s4,
+                 ["Cabinet mandataire", "Client (donneur d'ordre)", "SIREN client", "Ancien client"],
+                 "de clients")
+
 # ─── EXPORT ───────────────────────────────────────────────────────────────────
 
 st.divider()
+_df_s2_export = df_s2.drop(columns=[COL_REP_ID], errors="ignore")
 excel_bytes = build_excel([
     ("Actions de lobbying",         df_s1),
-    ("Organisations",               df_s2),
+    ("Organisations",               _df_s2_export),
     ("Dirigeants & Collaborateurs", df_s3),
+    ("Clients & Mandats",           df_s4),
 ])
 filename = f"hatvp_{keyword.replace(' ','_')}_{mode_key}.xlsx"
 n3 = len(df_s3) if not df_s3.empty else 0
+n4 = len(df_s4) if not df_s4.empty else 0
 st.download_button(
-    label=f"⬇️  Télécharger Excel — {len(df_s1)} actions · {len(df_s2)} orgs · {n3} personnes",
+    label=f"⬇️  Télécharger Excel — {len(df_s1)} actions · {len(df_s2)} orgs · {n3} personnes · {n4} clients",
     data=excel_bytes,
     file_name=filename,
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
