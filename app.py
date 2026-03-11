@@ -27,73 +27,202 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+# ─── THÈME ────────────────────────────────────────────────────────────────────
+
+if "theme" not in st.session_state:
+    st.session_state.theme = "light"
+
+dark = st.session_state.theme == "dark"
+
+# Palette clair
+LIGHT = {
+    "bg_page": "#f8fafc",          "bg_sidebar": "#ffffff",
+    "bg_card": "#ffffff",           "card_shadow": "box-shadow:0 1px 3px rgba(0,0,0,0.05);",
+    "bg_input": "#ffffff",          "border": "#e2e8f0",
+    "border_card": "#e2e8f0",       "hr": "#e2e8f0",
+    "text_primary": "#1e293b",      "text_secondary": "#64748b",
+    "text_muted": "#94a3b8",        "text_strong": "#334155",
+    "accent": "#2563eb",            "link": "#2563eb",
+    "stat_number": "#2563eb",       "stat_label": "#94a3b8",
+    "card_heading": "#1e293b",      "card_text": "#64748b",
+    "code_bg": "#f1f5f9",           "code_text": "#2563eb",
+    "pill_bg": "#f1f5f9",           "pill_border": "#e2e8f0",
+    "pill_text": "#475569",         "pill_count": "#94a3b8",
+    "badge_objets":   ("bg:#dbeafe", "color:#1d4ed8", "border:#93c5fd"),
+    "badge_secteurs": ("bg:#ede9fe", "color:#6d28d9", "border:#c4b5fd"),
+    "badge_orgs":     ("bg:#d1fae5", "color:#065f46", "border:#6ee7b7"),
+    "badge_pers":     ("bg:#fee2e2", "color:#991b1b", "border:#fca5a5"),
+    "badge_do":       ("bg:#f3e8ff", "color:#6b21a8", "border:#d8b4fe"),
+    "box_objets":   {"bg":"#eff6ff","br":"#bfdbfe","n1":"#1d4ed8","n2":"#d97706","lbl":"#64748b","pv":"#475569","pb":"#93c5fd"},
+    "box_secteurs": {"bg":"#f5f3ff","br":"#ddd6fe","n1":"#6d28d9","n2":"#d97706","lbl":"#64748b"},
+    "box_orgs":     {"bg":"#f0fdf4","br":"#bbf7d0","n1":"#059669","n2":"#d97706","lbl":"#64748b","pv":"#059669","pb":"#6ee7b7"},
+    "box_pers":     {"bg":"#fef2f2","br":"#fecaca","n1":"#dc2626","n2":"#059669","n3":"#d97706","lbl":"#64748b","pv":"#dc2626","pb":"#fca5a5","st":"#94a3b8"},
+    "box_do":       {"bg":"#faf5ff","br":"#e9d5ff","n1":"#9333ea","n2":"#059669","n3":"#d97706","lbl":"#64748b","pv":"#9333ea","pb":"#d8b4fe"},
+    "doc_label": "#2563eb",  "doc_np": "#dc2626",  "doc_ndo": "#9333ea",
+    "doc_o1": "#1d4ed8",     "doc_o2": "#059669",  "doc_o3": "#dc2626",   "doc_o4": "#d97706",
+    "doc_strong": "#1e293b", "doc_link": "#2563eb",
+    "h1": "#1e293b",         "h1_sub": "#64748b",   "h1_link": "#2563eb",
+    "h1_desc": "#475569",    "h1_strong": "#334155",
+    "empty": "#94a3b8",
+    # overrides CSS Streamlit natif
+    "st_bg": "#f8fafc",      "st_sbg": "#ffffff",   "st_text": "#1e293b",
+}
+
+# Palette sombre
+DARK = {
+    "bg_page": "#0d1b35",          "bg_sidebar": "#122040",
+    "bg_card": "linear-gradient(135deg,#122040 0%,#1a2e58 100%)",
+    "card_shadow": "",
+    "bg_input": "#122040",          "border": "#1e3560",
+    "border_card": "#2d4480",       "hr": "#1e3560",
+    "text_primary": "#e2e8f0",      "text_secondary": "#8899bb",
+    "text_muted": "#556688",        "text_strong": "#8899bb",
+    "accent": "#3b82f6",            "link": "#7dd3fc",
+    "stat_number": "#e8c97a",       "stat_label": "#6677aa",
+    "card_heading": "#e8c97a",      "card_text": "#8899bb",
+    "code_bg": "#0d1b35",           "code_text": "#7dd3fc",
+    "pill_bg": "#1a2e58",           "pill_border": "#2d4480",
+    "pill_text": "#93b4d8",         "pill_count": "#334466",
+    "badge_objets":   ("bg:#1e4070", "color:#93c5fd", "border:#3b82f655"),
+    "badge_secteurs": ("bg:#2d1f4e", "color:#c4b5fd", "border:#7c3aed55"),
+    "badge_orgs":     ("bg:#1a3a2a", "color:#6ee7b7", "border:#05966955"),
+    "badge_pers":     ("bg:#3a2020", "color:#fca5a5", "border:#dc262655"),
+    "badge_do":       ("bg:#2a1f40", "color:#d8b4fe", "border:#a855f755"),
+    "box_objets":   {"bg":"#1e407022","br":"#3b82f644","n1":"#93c5fd","n2":"#e8c97a","lbl":"#8899bb","pv":"#93b4d8","pb":"#3b82f644"},
+    "box_secteurs": {"bg":"#2d1f4e22","br":"#7c3aed44","n1":"#c4b5fd","n2":"#e8c97a","lbl":"#8899bb"},
+    "box_orgs":     {"bg":"#1a3a2a22","br":"#05966944","n1":"#6ee7b7","n2":"#e8c97a","lbl":"#8899bb","pv":"#6ee7b7","pb":"#05966944"},
+    "box_pers":     {"bg":"#3a202022","br":"#dc262644","n1":"#fca5a5","n2":"#6ee7b7","n3":"#e8c97a","lbl":"#8899bb","pv":"#fca5a5","pb":"#dc262644","st":"#556688"},
+    "box_do":       {"bg":"#2a1f4022","br":"#a855f744","n1":"#d8b4fe","n2":"#6ee7b7","n3":"#e8c97a","lbl":"#8899bb","pv":"#d8b4fe","pb":"#a855f744"},
+    "doc_label": "#7dd3fc", "doc_np": "#fca5a5",  "doc_ndo": "#d8b4fe",
+    "doc_o1": "#93c5fd",    "doc_o2": "#6ee7b7",  "doc_o3": "#fca5a5",   "doc_o4": "#e8c97a",
+    "doc_strong": "#e2e8f0","doc_link": "#7dd3fc",
+    "h1": "#e2e8f0",        "h1_sub": "#8899bb",   "h1_link": "#7dd3fc",
+    "h1_desc": "#556688",   "h1_strong": "#8899bb",
+    "empty": "#334466",
+    "st_bg": "#0d1b35",     "st_sbg": "#122040",   "st_text": "#e2e8f0",
+}
+
+C = DARK if dark else LIGHT
+
+# Badge helpers
+def _badge_css(t):
+    bg, color, border = t
+    return f"background:{bg[3:]};color:{color[6:]};border:1px solid {border[7:]};"
+
 # ─── SEO ──────────────────────────────────────────────────────────────────────
 
-st.markdown("""
-<meta name="description" content="Explorez et téléchargez les données du répertoire des représentants d'intérêts (lobbyistes) de la HATVP. Recherche full-text, export Excel en un clic — actions de lobbying, organisations, dirigeants.">
-<meta name="keywords" content="HATVP, lobbying, représentants d'intérêts, transparence, open data, répertoire, France, lobbyistes">
+# ⚠️ Mets à jour cette URL si tu configures un domaine personnalisé
+SITE_URL = "https://hatvp-explorer.onrender.com"
+
+st.markdown(f"""
+<link rel="canonical" href="{SITE_URL}">
+<meta name="description" content="Consultez le répertoire HATVP des lobbyistes en France : plus de 95 000 actions de lobbying déclarées, recherche par mot-clé, organisation ou personne, export Excel structuré. Données open data de la Haute Autorité pour la Transparence de la Vie Publique.">
+<meta name="keywords" content="HATVP, lobbying, représentants d'intérêts, transparence, open data, répertoire, France, lobbyistes, actions de lobbying, export Excel">
 <meta name="robots" content="index, follow">
-<meta property="og:title" content="HATVP To Table — Données de lobbying en France">
-<meta property="og:description" content="Accédez simplement aux données open data de la Haute Autorité pour la Transparence de la Vie Publique : recherchez parmi 95 000 actions de lobbying déclarées et exportez en Excel.">
+<meta name="author" content="HATVP To Table">
+
+<meta property="og:title" content="HATVP To Table — Répertoire des lobbyistes en France">
+<meta property="og:description" content="Recherchez et téléchargez les données open data HATVP : 95 000 actions de lobbying déclarées, organisations, dirigeants — export Excel en un clic.">
 <meta property="og:type" content="website">
+<meta property="og:url" content="{SITE_URL}">
 <meta property="og:locale" content="fr_FR">
+<meta property="og:site_name" content="HATVP To Table">
+
 <meta name="twitter:card" content="summary">
-<meta name="twitter:title" content="HATVP To Table — Lobbying & transparence en France">
+<meta name="twitter:title" content="HATVP To Table — Répertoire des lobbyistes en France">
 <meta name="twitter:description" content="Recherchez et téléchargez les données HATVP sur le lobbying en France. Export Excel en un clic.">
+<meta name="twitter:site" content="@hatvp">
+
 <script type="application/ld+json">
-{
+{{
   "@context": "https://schema.org",
   "@type": "WebApplication",
   "name": "HATVP To Table",
-  "description": "Outil de recherche et d'export des données open data de la Haute Autorité pour la Transparence de la Vie Publique (HATVP) sur le lobbying en France.",
+  "url": "{SITE_URL}",
+  "description": "Outil de recherche et d'export des données open data de la HATVP sur le lobbying en France. Permet de rechercher parmi plus de 95 000 actions de lobbying déclarées par les représentants d'intérêts inscrits au répertoire officiel.",
   "applicationCategory": "DataVisualization",
   "inLanguage": "fr",
   "isAccessibleForFree": true,
-  "about": {
+  "featureList": [
+    "Recherche full-text dans les actions de lobbying",
+    "Recherche par secteur, organisation, personne ou donneur d'ordre",
+    "Export Excel structuré en 4 onglets",
+    "Matching élargi ou exact"
+  ],
+  "about": {{
     "@type": "Dataset",
     "name": "Répertoire des représentants d'intérêts — HATVP",
     "url": "https://www.hatvp.fr/le-repertoire/",
-    "publisher": {
+    "license": "https://www.etalab.gouv.fr/licence-ouverte-open-licence",
+    "publisher": {{
       "@type": "GovernmentOrganization",
       "name": "Haute Autorité pour la Transparence de la Vie Publique",
-      "url": "https://www.hatvp.fr"
-    }
-  }
-}
+      "url": "https://www.hatvp.fr",
+      "sameAs": "https://fr.wikipedia.org/wiki/Haute_Autorit%C3%A9_pour_la_transparence_de_la_vie_publique"
+    }}
+  }}
+}}
 </script>
 """, unsafe_allow_html=True)
 
 # ─── STYLES ───────────────────────────────────────────────────────────────────
 
-st.markdown("""
+st.markdown(f"""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&display=swap');
-html, body, [class*="css"] { font-family: 'Syne', sans-serif; }
-.stApp { background-color: #0d1b35; }
-[data-testid="stSidebar"] { background-color: #122040; border-right: 1px solid #1e3560; min-width: 340px !important; max-width: 340px !important; }
-[data-testid="stSidebar"] > div:first-child { width: 360px !important; }
-h1 { font-family: 'Syne', sans-serif !important; font-weight: 800 !important; letter-spacing: -1px !important; }
-h2, h3 { font-family: 'Syne', sans-serif !important; font-weight: 700 !important; }
-.doc-card { background: linear-gradient(135deg, #122040 0%, #1a2e58 100%); border: 1px solid #2d4480; border-radius: 12px; padding: 20px 24px; margin-bottom: 14px; }
-.doc-card h4 { color: #e8c97a; font-family: 'Syne', sans-serif; font-weight: 700; font-size: 15px; margin: 0 0 8px 0; }
-.doc-card p { color: #8899bb; font-family: 'DM Mono', monospace; font-size: 13px; margin: 0; line-height: 1.6; }
-.doc-card code { background: #0d1b35; color: #7dd3fc; padding: 2px 6px; border-radius: 4px; font-size: 12px; }
-.stat-row { display: flex; gap: 12px; margin: 16px 0; }
-.stat-box { flex: 1; background: #122040; border: 1px solid #1e3560; border-radius: 10px; padding: 16px; text-align: center; }
-.stat-number { font-family: 'Syne', sans-serif; font-size: 28px; font-weight: 800; color: #e8c97a; line-height: 1; }
-.stat-label { font-family: 'DM Mono', monospace; font-size: 11px; color: #6677aa; margin-top: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
-.mode-badge { display: inline-block; padding: 4px 12px; border-radius: 20px; font-family: 'DM Mono', monospace; font-size: 12px; font-weight: 500; margin-bottom: 8px; }
-.mode-objets { background: #1e4070; color: #93c5fd; border: 1px solid #3b82f655; }
-.mode-secteurs { background: #2d1f4e; color: #c4b5fd; border: 1px solid #7c3aed55; }
-.mode-orgs { background: #1a3a2a; color: #6ee7b7; border: 1px solid #05966955; }
-.mode-personnes { background: #3a2020; color: #fca5a5; border: 1px solid #dc262655; }
-.mode-donneurs { background: #2a1f40; color: #d8b4fe; border: 1px solid #a855f755; }
-.sector-pill { display: inline-block; background: #1a2e58; border: 1px solid #2d4480; border-radius: 20px; padding: 5px 14px; margin: 4px; font-family: 'DM Mono', monospace; font-size: 12px; color: #93b4d8; }
-.stButton > button { background: linear-gradient(135deg, #2563eb, #3b82f6) !important; color: white !important; border: none !important; border-radius: 8px !important; font-family: 'Syne', sans-serif !important; font-weight: 600 !important; }
-.stDownloadButton > button { background: linear-gradient(135deg, #065f46, #047857) !important; color: white !important; border: none !important; border-radius: 8px !important; font-family: 'Syne', sans-serif !important; font-weight: 600 !important; }
-.stTextInput > div > div > input { background: #122040 !important; border: 1px solid #2d4480 !important; border-radius: 8px !important; color: #e2e8f0 !important; font-family: 'DM Mono', monospace !important; }
-.stSelectbox > div > div { background: #122040 !important; border: 1px solid #2d4480 !important; border-radius: 8px !important; }
-hr { border-color: #1e3560 !important; }
+html, body, [class*="css"] {{ font-family: 'Syne', sans-serif; }}
+
+/* Overrides Streamlit natifs */
+.stApp                             {{ background-color: {C['bg_page']} !important; }}
+[data-testid="stAppViewContainer"] {{ background-color: {C['bg_page']} !important; }}
+[data-testid="stHeader"]           {{ background-color: {C['bg_page']} !important; }}
+.stMarkdown, .stText, p, label     {{ color: {C['text_primary']} !important; }}
+[data-testid="stSidebar"]          {{ background-color: {C['bg_sidebar']}; border-right:1px solid {C['border']}; min-width:380px !important; max-width:380px !important; }}
+[data-testid="stSidebar"] > div:first-child {{ width:380px !important; }}
+[data-testid="stSidebar"] * {{ color: {C['text_primary']} !important; }}
+
+h1 {{ font-family:'Syne',sans-serif !important; font-weight:800 !important; letter-spacing:-1px !important; }}
+h2, h3 {{ font-family:'Syne',sans-serif !important; font-weight:700 !important; }}
+
+.doc-card {{ background:{C['bg_card']}; border:1px solid {C['border_card']}; border-radius:12px; padding:20px 24px; margin-bottom:14px; {C['card_shadow']} }}
+.doc-card h4 {{ color:{C['card_heading']}; font-family:'Syne',sans-serif; font-weight:700; font-size:15px; margin:0 0 8px 0; }}
+.doc-card p  {{ color:{C['card_text']}; font-family:'DM Mono',monospace; font-size:13px; margin:0; line-height:1.6; }}
+.doc-card code {{ background:{C['code_bg']}; color:{C['code_text']}; padding:2px 6px; border-radius:4px; font-size:12px; }}
+
+.stat-row {{ display:flex; gap:12px; margin:16px 0; }}
+.stat-box {{ flex:1; background:{C['bg_card']}; border:1px solid {C['border']}; border-radius:10px; padding:16px; text-align:center; {C['card_shadow']} }}
+.stat-number {{ font-family:'Syne',sans-serif; font-size:28px; font-weight:800; color:{C['stat_number']}; line-height:1; }}
+.stat-label  {{ font-family:'DM Mono',monospace; font-size:11px; color:{C['stat_label']}; margin-top:4px; text-transform:uppercase; letter-spacing:0.5px; }}
+
+.mode-badge    {{ display:inline-block; padding:4px 12px; border-radius:20px; font-family:'DM Mono',monospace; font-size:12px; font-weight:500; margin-bottom:8px; }}
+.mode-objets   {{ {_badge_css(C['badge_objets'])} }}
+.mode-secteurs {{ {_badge_css(C['badge_secteurs'])} }}
+.mode-orgs     {{ {_badge_css(C['badge_orgs'])} }}
+.mode-personnes {{ {_badge_css(C['badge_pers'])} }}
+.mode-donneurs {{ {_badge_css(C['badge_do'])} }}
+
+.sector-pill {{ display:inline-block; background:{C['pill_bg']}; border:1px solid {C['pill_border']}; border-radius:20px; padding:5px 14px; margin:4px; font-family:'DM Mono',monospace; font-size:12px; color:{C['pill_text']}; }}
+
+.stButton > button {{ background:linear-gradient(135deg,#2563eb,#3b82f6) !important; color:white !important; border:none !important; border-radius:8px !important; font-family:'Syne',sans-serif !important; font-weight:600 !important; }}
+.stDownloadButton > button {{ background:linear-gradient(135deg,#065f46,#047857) !important; color:white !important; border:none !important; border-radius:8px !important; font-family:'Syne',sans-serif !important; font-weight:600 !important; }}
+.stTextInput > div > div > input {{ background:{C['bg_input']} !important; border:1px solid {C['border']} !important; border-radius:8px !important; color:{C['text_primary']} !important; font-family:'DM Mono',monospace !important; }}
+.stTextInput > div > div > input::placeholder {{ color:{C['text_muted']} !important; opacity:1 !important; }}
+.stSelectbox > div > div {{ background:{C['bg_input']} !important; border:1px solid {C['border']} !important; border-radius:8px !important; }}
+
+/* Tooltips (bulles d'aide "?") */
+[data-baseweb="tooltip"] {{ background-color:{C['bg_card']} !important; border:1px solid {C['border']} !important; border-radius:8px !important; }}
+[data-baseweb="tooltip"] * {{ color:{C['text_primary']} !important; }}
+[role="tooltip"] {{ background-color:{C['bg_card']} !important; border:1px solid {C['border']} !important; border-radius:8px !important; color:{C['text_primary']} !important; }}
+hr {{ border-color:{C['hr']} !important; }}
+
+/* Popover (bouton Donner un feedback) */
+[data-testid="stPopover"] button {{ background:linear-gradient(135deg,#2563eb,#3b82f6) !important; color:white !important; border:none !important; border-radius:8px !important; font-family:'Syne',sans-serif !important; font-weight:600 !important; }}
+
+/* Expanders */
+[data-testid="stExpander"] {{ border-color:{C['border']} !important; background-color:{C['bg_page']} !important; }}
+[data-testid="stExpander"] summary {{ color:{C['text_primary']} !important; background-color:{C['bg_page']} !important; }}
+[data-testid="stExpander"] details {{ background-color:{C['bg_page']} !important; }}
+[data-testid="stExpander"] details > div {{ background-color:{C['bg_page']} !important; }}
 </style>
 """, unsafe_allow_html=True)
 
@@ -102,9 +231,23 @@ hr { border-color: #1e3560 !important; }
 with st.sidebar:
     st.markdown("## 🏛️ HATVP To Table")
     st.markdown(
-        "<p style='font-family:DM Mono,monospace;font-size:12px;color:#556688;'>"
+        f"<p style='font-family:DM Mono,monospace;font-size:12px;color:{C['text_muted']};'>"
         "Répertoire des représentants d'intérêts · HATVP</p>",
         unsafe_allow_html=True)
+
+    # Toggle thème
+    t_col1, t_col2 = st.columns(2)
+    with t_col1:
+        if st.button("☀️ Clair", use_container_width=True,
+                     type="secondary" if dark else "primary"):
+            st.session_state.theme = "light"
+            st.rerun()
+    with t_col2:
+        if st.button("🌙 Sombre", use_container_width=True,
+                     type="primary" if dark else "secondary"):
+            st.session_state.theme = "dark"
+            st.rerun()
+
     st.divider()
     st.markdown("### 🔍 Recherche")
     if "kw_rules" not in st.session_state:
@@ -199,28 +342,28 @@ with st.sidebar:
                     else:
                         st.error(f"Erreur d'envoi : {err}")
     st.markdown(
-        "<p style='font-family:DM Mono,monospace;font-size:11px;color:#334466;line-height:1.6;'>"
-        "Données open data · "
-        "<a href='https://www.hatvp.fr/le-repertoire/' target='_blank' "
-        "style='color:#4466aa;text-decoration:none;'>hatvp.fr/le-repertoire</a>"
-        " · Cache 12h</p>",
+        f"<p style='font-family:DM Mono,monospace;font-size:11px;color:{C['text_muted']};line-height:1.6;'>"
+        f"Données open data · "
+        f"<a href='https://www.hatvp.fr/le-repertoire/' target='_blank' "
+        f"style='color:{C['link']};text-decoration:none;'>hatvp.fr/le-repertoire</a>"
+        f" · Cache 12h</p>",
         unsafe_allow_html=True)
 
 # ─── EN-TÊTE ──────────────────────────────────────────────────────────────────
 
-st.markdown("""
-<h1 style='color:#e2e8f0;margin-bottom:4px;'>🏛️ HATVP To Table</h1>
-<p style='font-family:DM Mono,monospace;color:#8899bb;font-size:14px;margin-top:0;margin-bottom:12px;'>
+st.markdown(f"""
+<h1 style='color:{C['h1']};margin-bottom:4px;'>🏛️ HATVP To Table</h1>
+<p style='font-family:DM Mono,monospace;color:{C['h1_sub']};font-size:14px;margin-top:0;margin-bottom:12px;'>
 Accès simplifié aux données open data de la
-<a href='https://www.hatvp.fr/le-repertoire/' target='_blank' style='color:#7dd3fc;text-decoration:none;'>
+<a href='https://www.hatvp.fr/le-repertoire/' target='_blank' style='color:{C['h1_link']};text-decoration:none;'>
 Haute Autorité pour la Transparence de la Vie Publique (HATVP)</a>
 </p>
-<p style='font-family:DM Mono,monospace;color:#556688;font-size:13px;margin-top:0;line-height:1.7;'>
+<p style='font-family:DM Mono,monospace;color:{C['h1_desc']};font-size:13px;margin-top:0;line-height:1.7;'>
 La HATVP tient le répertoire officiel des représentants d'intérêts (lobbyistes) en France.
 Ces données sont publiques mais leur format brut est difficile à exploiter.
-<strong style='color:#8899bb;'>HATVP To Table</strong> vous permet de les
-<strong style='color:#8899bb;'>rechercher par mot-clé</strong> et de les
-<strong style='color:#8899bb;'>télécharger en tableau Excel</strong> structuré — actions de lobbying, organisations, dirigeants et collaborateurs.
+<strong style='color:{C['h1_strong']};'>HATVP To Table</strong> vous permet de les
+<strong style='color:{C['h1_strong']};'>rechercher par mot-clé</strong> et de les
+<strong style='color:{C['h1_strong']};'>télécharger en tableau Excel</strong> structuré — actions de lobbying, organisations, dirigeants et collaborateurs.
 </p>
 """, unsafe_allow_html=True)
 st.divider()
@@ -230,16 +373,16 @@ st.divider()
 with st.expander("📖 Comment utiliser cet outil ?", expanded=not keyword_rules):
     c1, c2 = st.columns(2)
     with c1:
-        st.markdown("""
+        st.markdown(f"""
 <div class="doc-card">
-<h4>🔎 Mode Objets d'activité <span style="color:#7dd3fc;font-size:11px;">(défaut · recommandé)</span></h4>
+<h4>🔎 Mode Objets d'activité <span style="color:{C['doc_label']};font-size:11px;">(défaut · recommandé)</span></h4>
 <p>Recherche full-text dans les ~95 000 descriptions libres des actions de lobbying déclarées.<br><br>
 <strong>Exemples :</strong><br>
 → <code>taxe carbone</code> · <code>CVAE</code> · <code>MiCA</code><br>
 → <code>réforme des retraites</code> · <code>loi APER</code><br>
 → <code>intelligence artificielle</code> · <code>RGPD</code>
 </p></div>""", unsafe_allow_html=True)
-        st.markdown("""
+        st.markdown(f"""
 <div class="doc-card">
 <h4>📂 Mode Secteurs d'activité</h4>
 <p>Recherche dans les 31 secteurs prédéfinis déclarés par chaque représentant.<br>
@@ -248,7 +391,7 @@ Retourne toutes les organisations actives dans ce secteur, avec l'ensemble de le
 → <code>Energie</code> · <code>Santé</code> · <code>Numérique</code><br>
 → <code>Agriculture</code> · <code>Transports</code> · <code>Finance</code>
 </p></div>""", unsafe_allow_html=True)
-        st.markdown("""
+        st.markdown(f"""
 <div class="doc-card">
 <h4>🏢 Mode Organisations</h4>
 <p>Recherche par nom, nom d'usage ou sigle dans le registre des représentants.<br>
@@ -257,56 +400,56 @@ Retourne les organisations dont le nom correspond, avec l'ensemble de leurs acti
 → <code>Total</code> · <code>BNP</code> · <code>MEDEF</code><br>
 → <code>France Assureurs</code> · <code>FNSEA</code>
 </p></div>""", unsafe_allow_html=True)
-        st.markdown("""
+        st.markdown(f"""
 <div class="doc-card">
 <h4>👤 Mode Personnes</h4>
 <p>Recherche par nom ou prénom parmi les dirigeants et collaborateurs déclarés.<br>
-<strong style="color:#fca5a5;">Nuance importante :</strong> l'onglet Personnes de l'export ne contient
+<strong style="color:{C['doc_np']};">Nuance importante :</strong> l'onglet Personnes de l'export ne contient
 que les personnes ayant effectivement matché — pas tous les membres des organisations trouvées.<br>
 Les onglets Actions et Organisations couvrent en revanche toutes les activités de ces organisations.<br><br>
 <strong>Exemples :</strong><br>
 → <code>Dupont</code> · <code>Jean Martin</code>
 </p></div>""", unsafe_allow_html=True)
-        st.markdown("""
+        st.markdown(f"""
 <div class="doc-card">
 <h4>🤝 Mode Donneurs d'ordre</h4>
 <p>Recherche par nom de client dans les mandats déclarés par les cabinets de lobbying.<br>
 Retourne uniquement les organisations qui agissent en tant que <em>mandataires</em> (cabinets) pour le compte de l'entité recherchée, ainsi que les actions menées spécifiquement pour ce donneur d'ordre.<br><br>
-<strong style="color:#d8b4fe;">Nuance :</strong> l'onglet Clients de l'export contient les mandats correspondant au donneur d'ordre matché — pas tous les clients des cabinets trouvés.<br><br>
+<strong style="color:{C['doc_ndo']};">Nuance :</strong> l'onglet Clients de l'export contient les mandats correspondant au donneur d'ordre matché — pas tous les clients des cabinets trouvés.<br><br>
 <strong>Exemples :</strong><br>
 → <code>Total</code> · <code>EDF</code> · <code>BNP Paribas</code>
 </p></div>""", unsafe_allow_html=True)
     with c2:
-        st.markdown("""
+        st.markdown(f"""
 <div class="doc-card">
 <h4>📋 Structure de l'export Excel (4 onglets)</h4>
 <p>
 Quel que soit le mode de recherche, l'export suit toujours la même structure :<br><br>
-<strong style="color:#93c5fd;">Onglet 1 — Actions de lobbying</strong><br>
+<strong style="color:{C['doc_o1']};">Onglet 1 — Actions de lobbying</strong><br>
 → 1 ligne par action déclarée par les organisations matchées<br>
 → Objet de l'action · période concernée · donneur d'ordre (si cabinet mandataire)<br>
 → Types d'actions menées · Responsables publics contactés · Domaines d'intervention<br><br>
-<strong style="color:#6ee7b7;">Onglet 2 — Organisations</strong><br>
+<strong style="color:{C['doc_o2']};">Onglet 2 — Organisations</strong><br>
 → 1 ligne par organisation matchée<br>
 → Coordonnées · catégorie · identifiants · récapitulatif des actions<br><br>
-<strong style="color:#fca5a5;">Onglet 3 — Dirigeants & Collaborateurs</strong><br>
+<strong style="color:{C['doc_o3']};">Onglet 3 — Dirigeants & Collaborateurs</strong><br>
 → 1 ligne par personne associée aux organisations matchées<br>
 → <em>En mode Personnes :</em> uniquement les personnes ayant matché<br><br>
-<strong style="color:#e8c97a;">Onglet 4 — Clients & Mandats</strong><br>
+<strong style="color:{C['doc_o4']};">Onglet 4 — Clients & Mandats</strong><br>
 → Uniquement si les organisations matchées sont des <em>cabinets mandataires</em><br>
 → <em>Modes Objets / Secteurs :</em> clients liés aux actions ayant matché uniquement<br>
 → <em>Modes Organisations / Personnes :</em> tous les clients déclarés des organisations listées<br>
 → <em>Mode Donneurs d'ordre :</em> les donneurs d'ordre matchés avec leurs cabinets mandataires
 </p></div>""", unsafe_allow_html=True)
-        st.markdown("""
+        st.markdown(f"""
 <div class="doc-card">
 <h4>🎯 Matching Élargi vs Exact</h4>
 <p>
-<strong style="color:#e2e8f0;">Élargi</strong> (défaut) — sous-chaînes + variantes orthographiques<br>
+<strong style="color:{C['doc_strong']};">Élargi</strong> (défaut) — sous-chaînes + variantes orthographiques<br>
 → <code>seb</code> trouve <em>SEB SA</em>, <em>Sebastian</em>, <em>Sébastien</em><br>
 → <code>energie</code> trouve <em>énergie</em>, <em>énergétique</em>, <em>Energie verte</em><br>
 → Idéal pour explorer un thème large<br><br>
-<strong style="color:#e2e8f0;">Exact</strong> — mot entier uniquement (frontières de mots)<br>
+<strong style="color:{C['doc_strong']};">Exact</strong> — mot entier uniquement (frontières de mots)<br>
 → <code>seb</code> trouve <em>SEB SA</em>, <em>groupe SEB</em> mais pas <em>Sebastian</em><br>
 → <code>loi</code> trouve <em>la loi</em>, <em>cette loi,</em> mais pas <em>lobbying</em><br>
 → Idéal pour un nom propre, un sigle ou un acronyme
@@ -314,13 +457,13 @@ Quel que soit le mode de recherche, l'export suit toujours la même structure :<
 <div class="doc-card">
 <h4>⚡ Conseils</h4>
 <p>
-→ Les <strong style="color:#e2e8f0;">accents et la casse</strong> sont ignorés dans tous les modes<br>
-→ En mode Objets, préférez des <strong style="color:#e2e8f0;">termes précis</strong><br>
-→ En mode Personnes, le mode <strong style="color:#e2e8f0;">Exact</strong> est recommandé pour éviter les faux positifs sur les noms<br>
-→ La <strong style="color:#e2e8f0;">période</strong> correspond à l'exercice déclaratif
+→ Les <strong style="color:{C['doc_strong']};">accents et la casse</strong> sont ignorés dans tous les modes<br>
+→ En mode Objets, préférez des <strong style="color:{C['doc_strong']};">termes précis</strong><br>
+→ En mode Personnes, le mode <strong style="color:{C['doc_strong']};">Exact</strong> est recommandé pour éviter les faux positifs sur les noms<br>
+→ La <strong style="color:{C['doc_strong']};">période</strong> correspond à l'exercice déclaratif
 (ex: 01/04/2024 – 31/03/2025), pas à la date de publication<br>
 → Source : <a href="https://www.hatvp.fr/le-repertoire/" target="_blank"
-style="color:#7dd3fc;">hatvp.fr/le-repertoire</a>
+style="color:{C['doc_link']};">hatvp.fr/le-repertoire</a>
 </p></div>""", unsafe_allow_html=True)
 
 # ─── CHARGEMENT ───────────────────────────────────────────────────────────────
@@ -366,15 +509,16 @@ st.markdown(f"""
 if mode_key == "secteurs" and not keyword_rules:
     st.markdown("#### 📋 Secteurs disponibles")
     all_s = df_secteurs[COL_SECTEUR].dropna().value_counts()
-    pills = "".join(f'<span class="sector-pill">{s} <span style="color:#334466;">({n})</span></span>'
-                    for s, n in all_s.items())
+    pills = "".join(
+        f'<span class="sector-pill">{s} <span style="color:{C["pill_count"]};">({n})</span></span>'
+        for s, n in all_s.items())
     st.markdown(f'<div style="margin:12px 0;">{pills}</div>', unsafe_allow_html=True)
 
 st.divider()
 
 if not keyword_rules:
     st.markdown(
-        "<div style='text-align:center;padding:40px;color:#334466;font-family:DM Mono,monospace;'>"
+        f"<div style='text-align:center;padding:40px;color:{C['empty']};font-family:DM Mono,monospace;'>"
         "← Saisissez au moins un mot-clé dans la barre de gauche pour commencer</div>",
         unsafe_allow_html=True)
     st.stop()
@@ -386,18 +530,18 @@ badge_class = {
     "organisations": "mode-orgs", "personnes": "mode-personnes",
     "donneurs": "mode-donneurs",
 }.get(mode_key, "mode-objets")
-st.markdown(
-    f'<span class="mode-badge {badge_class}">Mode : {mode}</span>',
-    unsafe_allow_html=True)
+st.markdown(f'<span class="mode-badge {badge_class}">Mode : {mode}</span>', unsafe_allow_html=True)
 st.markdown(f"### Résultats pour **{keyword_label}**")
 
 ids_retenus            = []
 df_objets_match        = pd.DataFrame()
 _dirigeants_for_s3     = df_dirigeants
 _collaborateurs_for_s3 = df_collaborateurs
+B = C["box_objets"]  # raccourci, redéfini par mode
 
 # ── Mode OBJETS ───────────────────────────────────────────────────────────────
 if mode_key == "objets":
+    B = C["box_objets"]
     df_objets_match = search_objets(keyword_rules, df_objets, exact=exact_match)
     if df_objets_match.empty:
         st.warning(f"Aucun objet d'activité ne correspond à {keyword_label}.")
@@ -407,24 +551,25 @@ if mode_key == "objets":
                    [COL_REP_ID].dropna().unique().tolist())
 
     st.markdown(f"""
-<div style='background:#1e407022;border:1px solid #3b82f644;border-radius:10px;padding:16px 20px;margin:12px 0;'>
-  <span style='font-family:Syne,sans-serif;font-size:24px;font-weight:800;color:#93c5fd;'>{len(df_objets_match):,}</span>
-  <span style='font-family:DM Mono,monospace;color:#8899bb;font-size:13px;margin-left:8px;'>actions trouvées</span>
+<div style='background:{B["bg"]};border:1px solid {B["br"]};border-radius:10px;padding:16px 20px;margin:12px 0;'>
+  <span style='font-family:Syne,sans-serif;font-size:24px;font-weight:800;color:{B["n1"]};'>{len(df_objets_match):,}</span>
+  <span style='font-family:DM Mono,monospace;color:{B["lbl"]};font-size:13px;margin-left:8px;'>actions trouvées</span>
   &nbsp;·&nbsp;
-  <span style='font-family:Syne,sans-serif;font-size:24px;font-weight:800;color:#e8c97a;'>{len(ids_retenus):,}</span>
-  <span style='font-family:DM Mono,monospace;color:#8899bb;font-size:13px;margin-left:8px;'>organisations</span>
+  <span style='font-family:Syne,sans-serif;font-size:24px;font-weight:800;color:{B["n2"]};'>{len(ids_retenus):,}</span>
+  <span style='font-family:DM Mono,monospace;color:{B["lbl"]};font-size:13px;margin-left:8px;'>organisations</span>
 </div>""", unsafe_allow_html=True)
 
     with st.expander(f"📝 Aperçu des {min(10, len(df_objets_match))} premiers objets matchés"):
         for _, row in df_objets_match.head(10).iterrows():
             objet = str(row[COL_OBJET])
             st.markdown(
-                f"<div style='font-family:DM Mono,monospace;font-size:12px;color:#93b4d8;"
-                f"padding:8px 12px;border-left:2px solid #3b82f644;margin-bottom:6px;'>{objet}</div>",
+                f"<div style='font-family:DM Mono,monospace;font-size:12px;color:{B['pv']};"
+                f"padding:8px 12px;border-left:2px solid {B['pb']};margin-bottom:6px;'>{objet}</div>",
                 unsafe_allow_html=True)
 
 # ── Mode SECTEURS ─────────────────────────────────────────────────────────────
 elif mode_key == "secteurs":
+    B = C["box_secteurs"]
     all_sectors_found = search_secteurs(keyword_rules, df_secteurs, exact=exact_match)
     if not all_sectors_found:
         st.warning(f"Aucun secteur ne correspond à {keyword_label}.")
@@ -443,16 +588,17 @@ elif mode_key == "secteurs":
     df_objets_match = df_objets[df_objets[COL_EXO_ID].isin(exo_ids)]
 
     st.markdown(f"""
-<div style='background:#2d1f4e22;border:1px solid #7c3aed44;border-radius:10px;padding:16px 20px;margin:12px 0;'>
-  <span style='font-family:Syne,sans-serif;font-size:24px;font-weight:800;color:#c4b5fd;'>{len(df_objets_match):,}</span>
-  <span style='font-family:DM Mono,monospace;color:#8899bb;font-size:13px;margin-left:8px;'>actions associées</span>
+<div style='background:{B["bg"]};border:1px solid {B["br"]};border-radius:10px;padding:16px 20px;margin:12px 0;'>
+  <span style='font-family:Syne,sans-serif;font-size:24px;font-weight:800;color:{B["n1"]};'>{len(df_objets_match):,}</span>
+  <span style='font-family:DM Mono,monospace;color:{B["lbl"]};font-size:13px;margin-left:8px;'>actions associées</span>
   &nbsp;·&nbsp;
-  <span style='font-family:Syne,sans-serif;font-size:24px;font-weight:800;color:#e8c97a;'>{len(ids_retenus):,}</span>
-  <span style='font-family:DM Mono,monospace;color:#8899bb;font-size:13px;margin-left:8px;'>organisations</span>
+  <span style='font-family:Syne,sans-serif;font-size:24px;font-weight:800;color:{B["n2"]};'>{len(ids_retenus):,}</span>
+  <span style='font-family:DM Mono,monospace;color:{B["lbl"]};font-size:13px;margin-left:8px;'>organisations</span>
 </div>""", unsafe_allow_html=True)
 
 # ── Mode ORGANISATIONS ────────────────────────────────────────────────────────
 elif mode_key == "organisations":
+    B = C["box_orgs"]
     df_orgs_match = search_organisations(keyword_rules, df_infos, exact=exact_match)
     if df_orgs_match.empty:
         st.warning(f"Aucune organisation ne correspond à {keyword_label}.")
@@ -462,24 +608,25 @@ elif mode_key == "organisations":
     df_objets_match = df_objets[df_objets[COL_EXO_ID].isin(exo_ids)]
 
     st.markdown(f"""
-<div style='background:#1a3a2a22;border:1px solid #05966944;border-radius:10px;padding:16px 20px;margin:12px 0;'>
-  <span style='font-family:Syne,sans-serif;font-size:24px;font-weight:800;color:#6ee7b7;'>{len(ids_retenus):,}</span>
-  <span style='font-family:DM Mono,monospace;color:#8899bb;font-size:13px;margin-left:8px;'>organisations trouvées</span>
+<div style='background:{B["bg"]};border:1px solid {B["br"]};border-radius:10px;padding:16px 20px;margin:12px 0;'>
+  <span style='font-family:Syne,sans-serif;font-size:24px;font-weight:800;color:{B["n1"]};'>{len(ids_retenus):,}</span>
+  <span style='font-family:DM Mono,monospace;color:{B["lbl"]};font-size:13px;margin-left:8px;'>organisations trouvées</span>
   &nbsp;·&nbsp;
-  <span style='font-family:Syne,sans-serif;font-size:24px;font-weight:800;color:#e8c97a;'>{len(df_objets_match):,}</span>
-  <span style='font-family:DM Mono,monospace;color:#8899bb;font-size:13px;margin-left:8px;'>actions associées</span>
+  <span style='font-family:Syne,sans-serif;font-size:24px;font-weight:800;color:{B["n2"]};'>{len(df_objets_match):,}</span>
+  <span style='font-family:DM Mono,monospace;color:{B["lbl"]};font-size:13px;margin-left:8px;'>actions associées</span>
 </div>""", unsafe_allow_html=True)
 
     with st.expander(f"🏢 Aperçu des {min(10, len(df_orgs_match))} premières organisations matchées"):
         for _, row in df_orgs_match.head(10).iterrows():
             nom = str(row.get(COL_DENOM, "")) or str(row.get("nom_usage_hatvp", ""))
             st.markdown(
-                f"<div style='font-family:DM Mono,monospace;font-size:12px;color:#6ee7b7;"
-                f"padding:8px 12px;border-left:2px solid #05966944;margin-bottom:6px;'>{nom}</div>",
+                f"<div style='font-family:DM Mono,monospace;font-size:12px;color:{B['pv']};"
+                f"padding:8px 12px;border-left:2px solid {B['pb']};margin-bottom:6px;'>{nom}</div>",
                 unsafe_allow_html=True)
 
 # ── Mode PERSONNES ────────────────────────────────────────────────────────────
 elif mode_key == "personnes":
+    B = C["box_pers"]
     df_pers_match = search_personnes(keyword_rules, df_dirigeants, df_collaborateurs, exact=exact_match)
     if df_pers_match.empty:
         st.warning(f"Aucune personne ne correspond à {keyword_label}.")
@@ -494,15 +641,15 @@ elif mode_key == "personnes":
 
     nb_pers = len(df_pers_match)
     st.markdown(f"""
-<div style='background:#3a202022;border:1px solid #dc262644;border-radius:10px;padding:16px 20px;margin:12px 0;'>
-  <span style='font-family:Syne,sans-serif;font-size:24px;font-weight:800;color:#fca5a5;'>{nb_pers:,}</span>
-  <span style='font-family:DM Mono,monospace;color:#8899bb;font-size:13px;margin-left:8px;'>personnes trouvées</span>
+<div style='background:{B["bg"]};border:1px solid {B["br"]};border-radius:10px;padding:16px 20px;margin:12px 0;'>
+  <span style='font-family:Syne,sans-serif;font-size:24px;font-weight:800;color:{B["n1"]};'>{nb_pers:,}</span>
+  <span style='font-family:DM Mono,monospace;color:{B["lbl"]};font-size:13px;margin-left:8px;'>personnes trouvées</span>
   &nbsp;·&nbsp;
-  <span style='font-family:Syne,sans-serif;font-size:24px;font-weight:800;color:#6ee7b7;'>{len(ids_retenus):,}</span>
-  <span style='font-family:DM Mono,monospace;color:#8899bb;font-size:13px;margin-left:8px;'>organisations</span>
+  <span style='font-family:Syne,sans-serif;font-size:24px;font-weight:800;color:{B["n2"]};'>{len(ids_retenus):,}</span>
+  <span style='font-family:DM Mono,monospace;color:{B["lbl"]};font-size:13px;margin-left:8px;'>organisations</span>
   &nbsp;·&nbsp;
-  <span style='font-family:Syne,sans-serif;font-size:24px;font-weight:800;color:#e8c97a;'>{len(df_objets_match):,}</span>
-  <span style='font-family:DM Mono,monospace;color:#8899bb;font-size:13px;margin-left:8px;'>actions associées</span>
+  <span style='font-family:Syne,sans-serif;font-size:24px;font-weight:800;color:{B["n3"]};'>{len(df_objets_match):,}</span>
+  <span style='font-family:DM Mono,monospace;color:{B["lbl"]};font-size:13px;margin-left:8px;'>actions associées</span>
 </div>""", unsafe_allow_html=True)
 
     with st.expander(f"👤 Aperçu des {min(10, nb_pers)} premières personnes matchées"):
@@ -512,13 +659,14 @@ elif mode_key == "personnes":
             nom = str(row[nom_col]) if nom_col else ""
             statut = row.get("_statut_match", "")
             st.markdown(
-                f"<div style='font-family:DM Mono,monospace;font-size:12px;color:#fca5a5;"
-                f"padding:8px 12px;border-left:2px solid #dc262644;margin-bottom:6px;'>"
-                f"<span style='color:#556688;'>{statut}</span> — {nom}</div>",
+                f"<div style='font-family:DM Mono,monospace;font-size:12px;color:{B['pv']};"
+                f"padding:8px 12px;border-left:2px solid {B['pb']};margin-bottom:6px;'>"
+                f"<span style='color:{B['st']};'>{statut}</span> — {nom}</div>",
                 unsafe_allow_html=True)
 
 # ── Mode DONNEURS D'ORDRE ─────────────────────────────────────────────────────
 elif mode_key == "donneurs":
+    B = C["box_do"]
     df_do_match = search_donneurs_ordre(keyword_rules, df_clients, exact=exact_match)
     if df_do_match.empty:
         st.warning(f"Aucun donneur d'ordre ne correspond à {keyword_label}.")
@@ -547,22 +695,22 @@ elif mode_key == "donneurs":
 
     nb_do = len(matched_client_names)
     st.markdown(f"""
-<div style='background:#2a1f4022;border:1px solid #a855f744;border-radius:10px;padding:16px 20px;margin:12px 0;'>
-  <span style='font-family:Syne,sans-serif;font-size:24px;font-weight:800;color:#d8b4fe;'>{nb_do:,}</span>
-  <span style='font-family:DM Mono,monospace;color:#8899bb;font-size:13px;margin-left:8px;'>donneurs d'ordre trouvés</span>
+<div style='background:{B["bg"]};border:1px solid {B["br"]};border-radius:10px;padding:16px 20px;margin:12px 0;'>
+  <span style='font-family:Syne,sans-serif;font-size:24px;font-weight:800;color:{B["n1"]};'>{nb_do:,}</span>
+  <span style='font-family:DM Mono,monospace;color:{B["lbl"]};font-size:13px;margin-left:8px;'>donneurs d'ordre trouvés</span>
   &nbsp;·&nbsp;
-  <span style='font-family:Syne,sans-serif;font-size:24px;font-weight:800;color:#6ee7b7;'>{len(ids_retenus):,}</span>
-  <span style='font-family:DM Mono,monospace;color:#8899bb;font-size:13px;margin-left:8px;'>cabinets mandataires</span>
+  <span style='font-family:Syne,sans-serif;font-size:24px;font-weight:800;color:{B["n2"]};'>{len(ids_retenus):,}</span>
+  <span style='font-family:DM Mono,monospace;color:{B["lbl"]};font-size:13px;margin-left:8px;'>cabinets mandataires</span>
   &nbsp;·&nbsp;
-  <span style='font-family:Syne,sans-serif;font-size:24px;font-weight:800;color:#e8c97a;'>{len(df_objets_match):,}</span>
-  <span style='font-family:DM Mono,monospace;color:#8899bb;font-size:13px;margin-left:8px;'>actions associées</span>
+  <span style='font-family:Syne,sans-serif;font-size:24px;font-weight:800;color:{B["n3"]};'>{len(df_objets_match):,}</span>
+  <span style='font-family:DM Mono,monospace;color:{B["lbl"]};font-size:13px;margin-left:8px;'>actions associées</span>
 </div>""", unsafe_allow_html=True)
 
     with st.expander(f"🤝 Aperçu des {min(10, nb_do)} premiers donneurs d'ordre matchés"):
         for name in list(matched_client_names)[:10]:
             st.markdown(
-                f"<div style='font-family:DM Mono,monospace;font-size:12px;color:#d8b4fe;"
-                f"padding:8px 12px;border-left:2px solid #a855f744;margin-bottom:6px;'>{name}</div>",
+                f"<div style='font-family:DM Mono,monospace;font-size:12px;color:{B['pv']};"
+                f"padding:8px 12px;border-left:2px solid {B['pb']};margin-bottom:6px;'>{name}</div>",
                 unsafe_allow_html=True)
 
 # ─── ENRICHISSEMENT ───────────────────────────────────────────────────────────
