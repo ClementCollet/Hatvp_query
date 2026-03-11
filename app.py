@@ -1,31 +1,69 @@
 """
 HATVP To Table — Application Streamlit
-Export Excel 3 onglets :
-  1. Actions de lobbying  : 1 ligne par action (objet, période, types, responsables, domaines)
-  2. Organisations        : 1 ligne par organisation
-  3. Dirigeants & Collab. : 1 ligne par personne
+Interface utilisateur : sidebar, en-tête, recherche, affichage, export.
 """
 
 import streamlit as st
 import pandas as pd
-import unicodedata
-import gzip
-import io
-import os
-import zipfile
-import requests
-import tempfile
-from pathlib import Path
-from io import BytesIO
+
+from hatvp import (
+    load_all_tables,
+    search_objets, search_secteurs, search_organisations,
+    search_personnes, search_donneurs_ordre,
+    enrich_actions,
+    build_actions_sheet, build_orgs_sheet, build_persons_sheet, build_clients_sheet,
+    build_excel,
+    send_feedback_email,
+    COL_SECTEUR, COL_OBJET, COL_REP_ID, COL_DENOM,
+    COL_EXO_ID, COL_ACT_ID, COL_ARI_ID_APP,
+)
 
 # ─── CONFIG ───────────────────────────────────────────────────────────────────
 
 st.set_page_config(
-    page_title="HATVP To Table",
+    page_title="HATVP To Table — Lobbying & transparence en France",
     page_icon="🏛️",
     layout="wide",
     initial_sidebar_state="expanded",
 )
+
+# ─── SEO ──────────────────────────────────────────────────────────────────────
+
+st.markdown("""
+<meta name="description" content="Explorez et téléchargez les données du répertoire des représentants d'intérêts (lobbyistes) de la HATVP. Recherche full-text, export Excel en un clic — actions de lobbying, organisations, dirigeants.">
+<meta name="keywords" content="HATVP, lobbying, représentants d'intérêts, transparence, open data, répertoire, France, lobbyistes">
+<meta name="robots" content="index, follow">
+<meta property="og:title" content="HATVP To Table — Données de lobbying en France">
+<meta property="og:description" content="Accédez simplement aux données open data de la Haute Autorité pour la Transparence de la Vie Publique : recherchez parmi 95 000 actions de lobbying déclarées et exportez en Excel.">
+<meta property="og:type" content="website">
+<meta property="og:locale" content="fr_FR">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="HATVP To Table — Lobbying & transparence en France">
+<meta name="twitter:description" content="Recherchez et téléchargez les données HATVP sur le lobbying en France. Export Excel en un clic.">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "HATVP To Table",
+  "description": "Outil de recherche et d'export des données open data de la Haute Autorité pour la Transparence de la Vie Publique (HATVP) sur le lobbying en France.",
+  "applicationCategory": "DataVisualization",
+  "inLanguage": "fr",
+  "isAccessibleForFree": true,
+  "about": {
+    "@type": "Dataset",
+    "name": "Répertoire des représentants d'intérêts — HATVP",
+    "url": "https://www.hatvp.fr/le-repertoire/",
+    "publisher": {
+      "@type": "GovernmentOrganization",
+      "name": "Haute Autorité pour la Transparence de la Vie Publique",
+      "url": "https://www.hatvp.fr"
+    }
+  }
+}
+</script>
+""", unsafe_allow_html=True)
+
+# ─── STYLES ───────────────────────────────────────────────────────────────────
 
 st.markdown("""
 <style>
@@ -58,506 +96,6 @@ h2, h3 { font-family: 'Syne', sans-serif !important; font-weight: 700 !important
 hr { border-color: #1e3560 !important; }
 </style>
 """, unsafe_allow_html=True)
-
-# ─── CONSTANTES ───────────────────────────────────────────────────────────────
-
-CACHE_DIR = Path(tempfile.gettempdir()) / "hatvp_cache"
-ZIP_URL   = "https://www.hatvp.fr/agora/opendata/csv/Vues_Separees_CSV.zip"
-
-COL_SECTEUR = "secteur_activite"
-COL_OBJET   = "objet_activite"
-COL_REP_ID  = "representants_id"
-COL_DENOM   = "denomination"
-COL_EXO_ID  = "exercices_id"
-COL_ACT_ID  = "activite_id"
-TABLE_KEYWORDS = {
-    "secteurs":       ["secteur"],
-    "infos":          ["information", "generale"],
-    "objets":         ["objet", "activite"],
-    "exercices":      ["exercice"],
-    "dirigeants":     ["dirigeant"],
-    "collaborateurs": ["collaborateur"],
-    "ari":            ["observation"],   # 14_observations.csv : activite_id ↔ action_representation_interet_id
-    "actions":        ["action", "menee"],
-    "ministeres":     ["ministere"],
-    "domaines":       ["domaine"],
-    "decisions":      ["decision"],
-    "clients":        ["client"],
-    "beneficiaires":  ["beneficiaire"],
-}
-
-def find_csv_in_zip(csv_names, keywords):
-    kw_low = [k.lower() for k in keywords]
-    candidates = [n for n in csv_names if all(k in n.lower() for k in kw_low)]
-    return max(candidates, key=len) if candidates else None
-
-def _nc(c):
-    """Normalise un nom de colonne brut (même logique que normalize_cols)."""
-    return c.strip().lower().replace(" ", "_").strip('"').strip("'")
-
-def _col_filter(fixed=(), patterns=(), exclude=()):
-    """Retourne un callable usecols qui filtre sur noms normalisés."""
-    fixed_set = set(fixed)
-    def keep(c):
-        nc = _nc(c)
-        if exclude and any(e in nc for e in exclude):
-            return False
-        return nc in fixed_set or any(p in nc for p in patterns)
-    return keep
-
-TABLE_COLS = {
-    "secteurs":       _col_filter({"secteur_activite", "representants_id"}),
-    "infos":          _col_filter({"representants_id", "denomination", "nom_usage_hatvp",
-                                   "sigle_hatvp", "label_categorie_organisation", "adresse",
-                                   "code_postal", "ville", "pays", "site_web", "page_linkedin",
-                                   "page_twitter", "date_premiere_publication",
-                                   "identifiant_national", "type_identifiant_national"}),
-    "objets":         _col_filter({"objet_activite", "exercices_id", "activite_id"}),
-    "exercices":      _col_filter({"exercices_id", "representants_id",
-                                   "annee_debut", "annee_fin"}),
-    "dirigeants":     _col_filter({"representants_id", "civilite_dirigeant", "nom_dirigeant",
-                                   "prenom_dirigeant", "fonction_dirigeant",
-                                   "nom_prenom_dirigeant"}),
-    "collaborateurs": _col_filter({"representants_id", "civilite_collaborateur",
-                                   "nom_collaborateur", "prenom_collaborateur",
-                                   "fonction_collaborateur", "nom_prenom_collaborateur"}),
-    "ari":            _col_filter({"activite_id", "action_representation_interet_id"}),
-    "actions":        _col_filter({"action_representation_interet_id"}, ("action_menee",),
-                                  exclude=("autre",)),
-    "ministeres":     _col_filter({"action_representation_interet_id"}, ("responsable_public",),
-                                  exclude=("autre",)),
-    "domaines":       _col_filter({"activite_id"}, ("domaine",)),
-    "clients":        _col_filter({"representants_id", "denomination_client",
-                                   "identifiant_national_client", "ancienclient",
-                                   "datecessation"}),
-    "beneficiaires":  _col_filter({"beneficiaire_action_menee",
-                                   "action_representation_interet_id",
-                                   "action_menee_en_propre"}),
-}
-
-# ─── UTILITAIRES ──────────────────────────────────────────────────────────────
-
-def normalize_cols(df):
-    df.columns = [_nc(c) for c in df.columns]
-    return df
-
-def read_csv_bytes(raw_bytes, usecols=None):
-    if raw_bytes[:2] == b"\x1f\x8b":
-        with gzip.open(io.BytesIO(raw_bytes)) as f:
-            raw_bytes = f.read()
-    for enc in ["utf-8-sig", "utf-8", "latin-1", "cp1252"]:
-        try:
-            text = raw_bytes.decode(enc); break
-        except UnicodeDecodeError:
-            continue
-    else:
-        text = raw_bytes.decode("latin-1", errors="replace")
-    first_line = text.split("\n")[0]
-    sep = ";" if first_line.count(";") >= first_line.count(",") else ","
-    for s in [sep, ("," if sep == ";" else ";")]:
-        try:
-            df = pd.read_csv(io.StringIO(text), sep=s, low_memory=False,
-                             on_bad_lines="skip", usecols=usecols)
-            if len(df.columns) > 1:
-                return normalize_cols(df)
-        except Exception:
-            continue
-    return pd.DataFrame()
-
-def strip_accents(text):
-    return "".join(c for c in unicodedata.normalize("NFD", text)
-                   if unicodedata.category(c) != "Mn")
-
-def normalize(text):
-    return strip_accents(str(text).lower())
-
-def generate_variants(keyword):
-    kw = keyword.strip()
-    variants = set()
-    for f in {kw, kw.lower(), kw.capitalize(),
-               strip_accents(kw), strip_accents(kw).lower(), strip_accents(kw).capitalize()}:
-        variants.add(f)
-        if len(f) > 6: variants.add(f[:-1])
-        if len(f) > 7: variants.add(f[:-2])
-    for v in list(variants):
-        s = v
-        for src, dst in [("é","e"),("è","e"),("ê","e"),("ë","e"),("à","a"),
-                         ("â","a"),("î","i"),("ô","o"),("û","u"),("ù","u"),("ç","c")]:
-            s = s.replace(src, dst)
-        variants.add(s)
-    return sorted(variants, key=lambda x: -len(x))
-
-# ─── CHARGEMENT DONNÉES ───────────────────────────────────────────────────────
-
-@st.cache_resource(show_spinner=False)
-def load_all_tables():
-    CACHE_DIR.mkdir(exist_ok=True)
-    zip_cache = CACHE_DIR / "vues_separees.zip"
-    if not zip_cache.exists():
-        resp = requests.get(ZIP_URL, stream=True, timeout=300)
-        resp.raise_for_status()
-        with open(zip_cache, "wb") as f:
-            for chunk in resp.iter_content(65536):
-                f.write(chunk)
-    tables = {}
-    with zipfile.ZipFile(zip_cache) as z:
-        names = z.namelist()
-        csv_names = [n for n in names if n.lower().endswith(".csv")]
-        for key, keywords in TABLE_KEYWORDS.items():
-            match = find_csv_in_zip(csv_names, keywords)
-            if match:
-                tables[key] = read_csv_bytes(z.read(match), usecols=TABLE_COLS.get(key))
-    return tables
-
-# ─── MATCHING ─────────────────────────────────────────────────────────────────
-
-def _word_boundary_match(needle: str, haystack: str) -> bool:
-    """Vérifie que needle est un mot entier dans haystack (matching exact)."""
-    import re
-    pattern = r"(?<![\w\u00C0-\u024F])" + re.escape(needle) + r"(?![\w\u00C0-\u024F])"
-    return bool(re.search(pattern, haystack, re.IGNORECASE))
-
-def _make_matcher(keyword, exact):
-    """Retourne un callable qui teste si une chaîne matche le mot-clé."""
-    if exact:
-        kw_norm = normalize(keyword.strip())
-        return lambda s: _word_boundary_match(kw_norm, normalize(str(s)))
-    else:
-        kw_norms = list(set(normalize(v) for v in generate_variants(keyword)))
-        return lambda s: any(kw in normalize(str(s)) for kw in kw_norms)
-
-def _series_matches_rules(series, rules, exact):
-    """Masque booléen sur une Series : True si toutes les règles include matchent et aucune exclude."""
-    mask = pd.Series(True, index=series.index)
-    for r in rules:
-        kw = r["keyword"].strip()
-        if not kw:
-            continue
-        matcher = _make_matcher(kw, exact)
-        kw_mask = series.fillna("").apply(matcher)
-        if r["op"] == "Inclure":
-            mask = mask & kw_mask
-        else:
-            mask = mask & ~kw_mask
-    return mask
-
-def _df_matches_rules(df, cols, rules, exact):
-    """Masque booléen sur un DataFrame : True si AU MOINS UNE colonne matche toutes les règles."""
-    mask = pd.Series(True, index=df.index)
-    for r in rules:
-        kw = r["keyword"].strip()
-        if not kw:
-            continue
-        matcher = _make_matcher(kw, exact)
-        col_match = df[cols].apply(lambda col: col.fillna("").apply(matcher)).any(axis=1)
-        if r["op"] == "Inclure":
-            mask = mask & col_match
-        else:
-            mask = mask & ~col_match
-    return mask
-
-def search_secteurs(rules, df_secteurs, exact=False):
-    """Retourne la liste triée des secteurs matchant les règles."""
-    sectors = df_secteurs[COL_SECTEUR].drop_duplicates().dropna()
-    mask = _series_matches_rules(sectors, rules, exact)
-    return sorted(sectors[mask].unique().tolist())
-
-def search_objets(rules, df_objets, exact=False):
-    mask = _series_matches_rules(df_objets[COL_OBJET], rules, exact)
-    return df_objets.loc[mask]
-
-def search_organisations(rules, df_infos, exact=False):
-    search_cols = [c for c in ["denomination", "nom_usage_hatvp", "sigle_hatvp"]
-                   if c in df_infos.columns]
-    mask = _df_matches_rules(df_infos, search_cols, rules, exact)
-    return df_infos.loc[mask]
-
-def search_donneurs_ordre(rules, df_clients, exact=False):
-    """Recherche dans les noms de clients (donneurs d'ordre) déclarés par les cabinets mandataires."""
-    if "denomination_client" not in df_clients.columns or df_clients.empty:
-        return pd.DataFrame()
-    mask = _series_matches_rules(df_clients["denomination_client"], rules, exact)
-    return df_clients.loc[mask]
-
-def search_personnes(rules, df_dirigeants, df_collaborateurs, exact=False):
-    frames = []
-    for df_src, statut, name_cols in [
-        (df_dirigeants, "Dirigeant",
-         ["nom_dirigeant", "prenom_dirigeant", "nom_prenom_dirigeant"]),
-        (df_collaborateurs, "Collaborateur",
-         ["nom_collaborateur", "prenom_collaborateur", "nom_prenom_collaborateur"]),
-    ]:
-        if df_src.empty: continue
-        cols = [c for c in name_cols if c in df_src.columns]
-        if not cols: continue
-        mask = _df_matches_rules(df_src, cols, rules, exact)
-        matched = df_src.loc[mask].copy()
-        matched["_statut_match"] = statut
-        frames.append(matched)
-    if not frames:
-        return pd.DataFrame()
-    return pd.concat(frames, ignore_index=True)
-
-# ─── ENRICHISSEMENT ───────────────────────────────────────────────────────────
-
-COL_ARI_ID_APP = "action_representation_interet_id"
-
-def _agg(df, group_col, val_col, out_name):
-    return (df[df[val_col].notna() & (df[val_col].astype(str) != "nan")]
-            .groupby(group_col)[val_col]
-            .apply(lambda x: " | ".join(sorted(set(str(v) for v in x))))
-            .reset_index().rename(columns={val_col: out_name}))
-
-def enrich_actions(df_objets_matched, df_exercices,
-                   df_ari, df_actions, df_ministeres, df_domaines, df_beneficiaires=None):
-    """Jointures via 14_observations.csv comme table pivot."""
-    if df_beneficiaires is None:
-        df_beneficiaires = pd.DataFrame()
-
-    # 1. objets → exercices
-    exo_cols = ["exercices_id", "representants_id"]
-    for c in ["annee_debut", "annee_fin"]:
-        if c in df_exercices.columns:
-            exo_cols.append(c)
-    df = df_objets_matched.merge(
-        df_exercices[exo_cols].drop_duplicates(), on="exercices_id", how="left")
-
-    # 2. objets → observations (activite_id → action_representation_interet_id)
-    if not df_ari.empty and "activite_id" in df_ari.columns and COL_ARI_ID_APP in df_ari.columns:
-        df = df.merge(df_ari[["activite_id", COL_ARI_ID_APP]].drop_duplicates(),
-                      on="activite_id", how="left")
-    else:
-        df[COL_ARI_ID_APP] = None
-
-    # 3. ari_id → types d'actions
-    if not df_actions.empty and COL_ARI_ID_APP in df_actions.columns:
-        acol = next((c for c in df_actions.columns if "action_menee" in c and "autre" not in c), None)
-        if acol:
-            df = df.merge(_agg(df_actions, COL_ARI_ID_APP, acol, "types_actions"),
-                          on=COL_ARI_ID_APP, how="left")
-        else:
-            df["types_actions"] = None
-    else:
-        df["types_actions"] = None
-
-    # 4. ari_id → responsables publics
-    if not df_ministeres.empty and COL_ARI_ID_APP in df_ministeres.columns:
-        rcol = next((c for c in df_ministeres.columns
-                     if "responsable_public" in c and "autre" not in c), None)
-        if rcol:
-            df = df.merge(_agg(df_ministeres, COL_ARI_ID_APP, rcol, "responsables_publics"),
-                          on=COL_ARI_ID_APP, how="left")
-        else:
-            df["responsables_publics"] = None
-    else:
-        df["responsables_publics"] = None
-
-    # 5. activite_id → domaines (direct)
-    if not df_domaines.empty and "activite_id" in df_domaines.columns:
-        dcol = next((c for c in df_domaines.columns if "domaine" in c), None)
-        if dcol:
-            df = df.merge(_agg(df_domaines, "activite_id", dcol, "domaines_intervention"),
-                          on="activite_id", how="left")
-        else:
-            df["domaines_intervention"] = None
-    else:
-        df["domaines_intervention"] = None
-
-    # 6. ari_id → donneur d'ordre (bénéficiaire quand action faite pour un tiers)
-    if (not df_beneficiaires.empty
-            and COL_ARI_ID_APP in df_beneficiaires.columns
-            and "action_menee_en_propre" in df_beneficiaires.columns):
-        df_tiers = df_beneficiaires[
-            df_beneficiaires["action_menee_en_propre"].astype(str) == "0"
-        ]
-        if not df_tiers.empty:
-            df = df.merge(
-                _agg(df_tiers, COL_ARI_ID_APP, "beneficiaire_action_menee", "donneur_ordre"),
-                on=COL_ARI_ID_APP, how="left")
-        else:
-            df["donneur_ordre"] = None
-    else:
-        df["donneur_ordre"] = None
-
-    return df
-
-# ─── CONSTRUCTION DES ONGLETS ─────────────────────────────────────────────────
-
-def build_actions_sheet(df_enriched, df_infos):
-    org_cols = [c for c in [COL_REP_ID, COL_DENOM, "nom_usage_hatvp",
-                             "label_categorie_organisation", "ville", "site_web"]
-                if c in df_infos.columns]
-    df = df_enriched.merge(
-        df_infos[org_cols].drop_duplicates(subset=[COL_REP_ID]),
-        on=COL_REP_ID, how="left")
-    wanted = [COL_DENOM, "label_categorie_organisation", "ville",
-              COL_OBJET, "annee_debut", "annee_fin",
-              "donneur_ordre", "types_actions", "responsables_publics", "domaines_intervention"]
-    cols = list(dict.fromkeys(c for c in wanted if c in df.columns))
-    rename = {
-        COL_DENOM:                    "Organisation",
-        "nom_usage_hatvp":            "Nom HATVP",
-        "label_categorie_organisation":"Catégorie",
-        "ville":                      "Ville",
-        COL_REP_ID:                   "ID Organisation",
-        COL_OBJET:                    "Objet de l'action",
-        "annee_debut":                "Période début",
-        "annee_fin":                  "Période fin",
-        "types_actions":              "Types d'actions",
-        "responsables_publics":       "Responsables publics contactés",
-        "donneur_ordre":              "Donneur d'ordre",
-        "domaines_intervention":      "Domaines d'intervention",
-        "identifiant_fiche":          "ID Fiche HATVP",
-        COL_ACT_ID:                   "ID Activité",
-    }
-    df = df[cols].rename(columns={k: v for k, v in rename.items() if k in cols})
-    sort_col = "Organisation" if "Organisation" in df.columns else df.columns[0]
-    return df.sort_values([sort_col, "Période début"] if "Période début" in df.columns
-                          else [sort_col], na_position="last")
-
-def build_orgs_sheet(ids, df_infos, df_enriched):
-    df_summary = (
-        df_enriched.groupby(COL_REP_ID)[COL_OBJET]
-        .apply(lambda x: " | ".join(sorted(set(str(v)[:120] for v in x.dropna()))))
-        .reset_index().rename(columns={COL_OBJET: "objets_activite_matches"})
-    )
-    df = df_infos[df_infos[COL_REP_ID].isin(ids)].merge(df_summary, on=COL_REP_ID, how="left")
-    wanted = [COL_REP_ID, COL_DENOM, "nom_usage_hatvp", "sigle_hatvp",
-              "label_categorie_organisation", "adresse", "code_postal", "ville", "pays",
-              "site_web", "page_linkedin", "page_twitter",
-              "objets_activite_matches", "date_premiere_publication",
-              "identifiant_national", "type_identifiant_national"]
-    cols = list(dict.fromkeys(c for c in wanted if c in df.columns))
-    return (df[cols].drop_duplicates(subset=[COL_REP_ID])
-            .sort_values(COL_DENOM if COL_DENOM in cols else cols[0], na_position="last"))
-
-def build_persons_sheet(ids, df_orgs, df_dirigeants, df_collaborateurs):
-    org_ref_cols = [c for c in [COL_REP_ID, COL_DENOM, "nom_usage_hatvp",
-                                 "label_categorie_organisation", "ville", "site_web",
-                                 "objets_activite_matches"] if c in df_orgs.columns]
-    df_org = df_orgs[org_ref_cols].copy()
-    frames = []
-    for df_src, statut, rmap in [
-        (df_dirigeants, "Dirigeant", {
-            "civilite_dirigeant": "civilite", "nom_dirigeant": "nom",
-            "prenom_dirigeant": "prenom", "fonction_dirigeant": "fonction",
-            "nom_prenom_dirigeant": "nom_prenom"}),
-        (df_collaborateurs, "Collaborateur", {
-            "civilite_collaborateur": "civilite", "nom_collaborateur": "nom",
-            "prenom_collaborateur": "prenom", "fonction_collaborateur": "fonction",
-            "nom_prenom_collaborateur": "nom_prenom"}),
-    ]:
-        if df_src.empty or COL_REP_ID not in df_src.columns:
-            continue
-        df_f = df_src[df_src[COL_REP_ID].isin(ids)].copy()
-        if df_f.empty:
-            continue
-        df_f["statut"] = statut
-        df_f = df_f.rename(columns={k: v for k, v in rmap.items() if k in df_f.columns})
-        frames.append(df_f)
-    if not frames:
-        return pd.DataFrame()
-    df_p = pd.concat(frames, ignore_index=True).merge(df_org, on=COL_REP_ID, how="left")
-    wanted = ["statut", "civilite", "nom", "prenom", "fonction",
-              COL_DENOM, "label_categorie_organisation", "ville", "site_web", "objets_activite_matches"]
-    cols = list(dict.fromkeys(c for c in wanted if c in df_p.columns))
-    return df_p[cols].sort_values([COL_DENOM, "statut", "nom"], na_position="last")
-
-def build_clients_sheet(ids, df_clients, df_infos, ari_ids=None, df_beneficiaires=None,
-                        allowed_clients=None):
-    if df_clients.empty or "representants_id" not in df_clients.columns:
-        return pd.DataFrame()
-    df = df_clients[df_clients["representants_id"].isin(ids)].copy()
-    if df.empty:
-        return pd.DataFrame()
-    # Restreindre à une liste explicite de clients (mode donneurs d'ordre)
-    if allowed_clients is not None and "denomination_client" in df.columns:
-        df = df[df["denomination_client"].isin(allowed_clients)]
-    # Restreindre aux clients effectivement liés aux actions matchées
-    if (ari_ids is not None and df_beneficiaires is not None
-            and not df_beneficiaires.empty
-            and COL_ARI_ID_APP in df_beneficiaires.columns
-            and "action_menee_en_propre" in df_beneficiaires.columns
-            and "beneficiaire_action_menee" in df_beneficiaires.columns):
-        df_tiers = df_beneficiaires[
-            (df_beneficiaires[COL_ARI_ID_APP].isin(ari_ids)) &
-            (df_beneficiaires["action_menee_en_propre"].astype(str) == "0")
-        ]
-        if not df_tiers.empty:
-            matched_clients = set(df_tiers["beneficiaire_action_menee"].dropna().unique())
-            df = df[df["denomination_client"].isin(matched_clients)]
-    if df.empty:
-        return pd.DataFrame()
-    cab_cols = [c for c in ["representants_id", "denomination", "nom_usage_hatvp",
-                             "label_categorie_organisation"] if c in df_infos.columns]
-    df = df.merge(df_infos[cab_cols].drop_duplicates("representants_id"),
-                  on="representants_id", how="left")
-    wanted = ["denomination", "nom_usage_hatvp", "label_categorie_organisation",
-              "denomination_client", "identifiant_national_client",
-              "ancienclient", "datecessation"]
-    cols = [c for c in wanted if c in df.columns]
-    rename = {
-        "denomination":               "Cabinet mandataire",
-        "nom_usage_hatvp":            "Nom HATVP cabinet",
-        "label_categorie_organisation": "Catégorie cabinet",
-        "representants_id":           "ID Cabinet",
-        "denomination_client":        "Client (donneur d'ordre)",
-        "identifiant_national_client": "SIREN client",
-        "ancienclient":               "Ancien client",
-        "datecessation":              "Date cessation",
-    }
-    df = df[cols].rename(columns={k: v for k, v in rename.items() if k in cols})
-    sort_col = "Cabinet mandataire" if "Cabinet mandataire" in df.columns else df.columns[0]
-    return df.sort_values(sort_col, na_position="last")
-
-# ─── EXPORT EXCEL ─────────────────────────────────────────────────────────────
-
-def build_excel(sheets):
-    """sheets = liste de (nom, df). Retourne bytes."""
-    buf = BytesIO()
-    with pd.ExcelWriter(buf, engine="openpyxl") as writer:
-        for name, df in sheets:
-            if df is None or df.empty:
-                continue
-            df.to_excel(writer, sheet_name=name, index=False)
-            ws = writer.sheets[name]
-            for col_idx, col_name in enumerate(df.columns, 1):
-                max_len = max(len(str(col_name)),
-                              int(df[col_name].astype(str).str.len().quantile(0.9))
-                              if len(df) > 0 else 0)
-                ws.column_dimensions[
-                    ws.cell(row=1, column=col_idx).column_letter
-                ].width = min(max_len + 2, 60)
-    return buf.getvalue()
-
-# ─── FEEDBACK ─────────────────────────────────────────────────────────────────
-
-def send_feedback_email(fb_type, message, user_email=""):
-    form_id = os.environ.get("FORMSPREE_FORM_ID", "xqeyegea")
-    if not form_id:
-        return False, "Formspree non configuré (variable FORMSPREE_FORM_ID manquante)"
-    body = f"Type : {fb_type}\n"
-    if user_email:
-        body += f"Email utilisateur : {user_email}\n"
-    body += f"\nMessage :\n{message}"
-    payload = {
-        "subject": f"[HATVP To Table] {fb_type}",
-        "message": body,
-    }
-    if user_email:
-        payload["_replyto"] = user_email
-    try:
-        r = requests.post(
-            f"https://formspree.io/f/{form_id}",
-            json=payload,
-            headers={"Accept": "application/json"},
-            timeout=10,
-        )
-        if r.status_code == 200:
-            return True, ""
-        return False, f"Erreur Formspree : {r.status_code}"
-    except Exception as e:
-        return False, str(e)
 
 # ─── SIDEBAR ──────────────────────────────────────────────────────────────────
 
@@ -661,16 +199,30 @@ with st.sidebar:
                     else:
                         st.error(f"Erreur d'envoi : {err}")
     st.markdown(
-        "<p style='font-family:DM Mono,monospace;font-size:11px;color:#334466;'>"
-        "Données HATVP · Cache 12h</p>", unsafe_allow_html=True)
+        "<p style='font-family:DM Mono,monospace;font-size:11px;color:#334466;line-height:1.6;'>"
+        "Données open data · "
+        "<a href='https://www.hatvp.fr/le-repertoire/' target='_blank' "
+        "style='color:#4466aa;text-decoration:none;'>hatvp.fr/le-repertoire</a>"
+        " · Cache 12h</p>",
+        unsafe_allow_html=True)
 
 # ─── EN-TÊTE ──────────────────────────────────────────────────────────────────
 
-st.markdown(
-    "<h1 style='color:#e2e8f0;margin-bottom:4px;'>🏛️ HATVP To Table</h1>"
-    "<p style='font-family:DM Mono,monospace;color:#556688;font-size:14px;margin-top:0;'>"
-    "Explorez le répertoire des représentants d'intérêts (lobbyistes) français et téléchargez facilement les données compactées</p>",
-    unsafe_allow_html=True)
+st.markdown("""
+<h1 style='color:#e2e8f0;margin-bottom:4px;'>🏛️ HATVP To Table</h1>
+<p style='font-family:DM Mono,monospace;color:#8899bb;font-size:14px;margin-top:0;margin-bottom:12px;'>
+Accès simplifié aux données open data de la
+<a href='https://www.hatvp.fr/le-repertoire/' target='_blank' style='color:#7dd3fc;text-decoration:none;'>
+Haute Autorité pour la Transparence de la Vie Publique (HATVP)</a>
+</p>
+<p style='font-family:DM Mono,monospace;color:#556688;font-size:13px;margin-top:0;line-height:1.7;'>
+La HATVP tient le répertoire officiel des représentants d'intérêts (lobbyistes) en France.
+Ces données sont publiques mais leur format brut est difficile à exploiter.
+<strong style='color:#8899bb;'>HATVP To Table</strong> vous permet de les
+<strong style='color:#8899bb;'>rechercher par mot-clé</strong> et de les
+<strong style='color:#8899bb;'>télécharger en tableau Excel</strong> structuré — actions de lobbying, organisations, dirigeants et collaborateurs.
+</p>
+""", unsafe_allow_html=True)
 st.divider()
 
 # ─── DOCUMENTATION ────────────────────────────────────────────────────────────
@@ -839,9 +391,9 @@ st.markdown(
     unsafe_allow_html=True)
 st.markdown(f"### Résultats pour **{keyword_label}**")
 
-ids_retenus        = []
-df_objets_match    = pd.DataFrame()
-_dirigeants_for_s3    = df_dirigeants
+ids_retenus            = []
+df_objets_match        = pd.DataFrame()
+_dirigeants_for_s3     = df_dirigeants
 _collaborateurs_for_s3 = df_collaborateurs
 
 # ── Mode OBJETS ───────────────────────────────────────────────────────────────
@@ -935,7 +487,6 @@ elif mode_key == "personnes":
     ids_retenus = df_pers_match[COL_REP_ID].dropna().unique().tolist()
     exo_ids = df_exercices[df_exercices[COL_REP_ID].isin(ids_retenus)][COL_EXO_ID].unique()
     df_objets_match = df_objets[df_objets[COL_EXO_ID].isin(exo_ids)]
-    # Restreindre la table personnes aux seules personnes matchées
     _dirigeants_for_s3 = (df_pers_match[df_pers_match["_statut_match"] == "Dirigeant"]
                           .drop(columns=["_statut_match"]))
     _collaborateurs_for_s3 = (df_pers_match[df_pers_match["_statut_match"] == "Collaborateur"]
@@ -976,7 +527,6 @@ elif mode_key == "donneurs":
     matched_client_names = set(df_do_match["denomination_client"].dropna().unique())
     ids_retenus = df_do_match["representants_id"].dropna().unique().tolist()
 
-    # Actions menées pour ces donneurs d'ordre via df_beneficiaires
     if (not df_beneficiaires.empty
             and COL_ARI_ID_APP in df_beneficiaires.columns
             and "action_menee_en_propre" in df_beneficiaires.columns
@@ -1033,10 +583,7 @@ with st.spinner("🔀 Enrichissement des actions (période, types, responsables)
 df_s1 = build_actions_sheet(df_enriched, df_infos)
 df_s2 = build_orgs_sheet(ids_retenus, df_infos, df_enriched)
 df_s3 = build_persons_sheet(ids_retenus, df_s2, _dirigeants_for_s3, _collaborateurs_for_s3)
-# En mode objets/secteurs : clients filtrés aux actions matchées uniquement
-# En mode objets/secteurs : clients filtrés aux actions matchées uniquement
-# En mode organisations/personnes : tous les clients des organisations listées
-# En mode donneurs : uniquement les clients matchés (via allowed_clients)
+
 if mode_key in ("objets", "secteurs"):
     _ari_ids_matched = (df_enriched[COL_ARI_ID_APP].dropna().unique()
                         if COL_ARI_ID_APP in df_enriched.columns else None)
